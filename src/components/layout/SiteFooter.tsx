@@ -94,10 +94,11 @@ export function SiteFooter() {
         ))}
         <nav aria-label="Coleções">
           <h2 className="mb-2 text-sm font-semibold">Coleções</h2>
-          <ul className="space-y-1.5">
+          {/* py-1 on the links: 24px touch targets (WCAG 2.5.8), same rhythm as the static lists. */}
+          <ul>
             {COLLECTIONS.map((collection) => (
               <li key={collection.id}>
-                <Link to="/" search={{ category: [collection.id] }} hash="catalogo" className="text-muted-foreground hover:text-primary">
+                <Link to="/" search={{ category: [collection.id] }} hash="catalogo" className="inline-block py-1 text-muted-foreground hover:text-primary">
                   {collection.label}
                 </Link>
               </li>

@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import { Heart, House, LogIn, Search, ShoppingCart, User } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useRealtimeStatus } from '@/services/realtime/RealtimeProvider'
@@ -15,6 +15,8 @@ const STATUS_LABEL = {
 const UNAVAILABLE = 'Indisponível nesta versão'
 
 export function AppShell({ children }: { children: ReactNode }) {
+  // Routes with their own mobile bottom bar (NFT detail) opt out of the bottom navigation.
+  const hideMobileNav = useRouterState({ select: (state) => state.matches.some((match) => match.staticData.hideMobileNav) })
   return (
     <div className="min-h-dvh">
       <a
@@ -25,11 +27,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
       <DesktopHeader />
       <RealtimeIndicator />
-      <main id="conteudo" className="mx-auto max-w-6xl px-4 pb-28 sm:px-6 md:pb-12">
+      <main id="conteudo" className={cn('mx-auto max-w-6xl px-4 pb-28 sm:px-6 md:pb-12', hideMobileNav && 'pb-12')}>
         {children}
       </main>
       <SiteFooter />
-      <MobileNav />
+      {!hideMobileNav && <MobileNav />}
     </div>
   )
 }

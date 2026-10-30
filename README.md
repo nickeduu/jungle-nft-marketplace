@@ -2,7 +2,7 @@
 
 Solução do [desafio Front-end da Jungle Gaming](https://github.com/junglegaming/frontend-challenge): marketplace de NFTs em React + TypeScript com APIs, autenticação, carteiras, pagamentos e tempo real **simulados na camada de rede** (MSW + Socket.IO).
 
-> **Status:** Etapa 2 — Início (destaques + catálogo com busca, abas, filtros, ordenação e paginação na URL) conforme o Figma. Detalhe do NFT ainda com layout provisório; demais telas nas próximas etapas.
+> **Status:** Etapa 3 — Início (destaques + catálogo com busca, abas, filtros, ordenação e paginação na URL) e Detalhe do NFT (galeria, edições na URL, quantidade com limite e estoque em tempo real, avaliações, compartilhamento, "Mais desta coleção") conforme o Figma. Comprar, carrinho e favoritos aparecem como indisponíveis até as etapas de sessão e carrinho.
 
 ## Stack
 
@@ -80,7 +80,15 @@ O estado simulado fica em `localStorage` (sobrevive a refresh). Cenários de red
   - `POST /socket/emit` `{ "event", "payload" }` — reenvia um evento (duplicado/antigo)
   - `POST /socket/disconnect` — derruba a conexão Socket.IO
 
-Na tela de detalhe há um painel **Simulação (MSW)** que usa esses endpoints.
+Na tela de detalhe, o botão **Simulação (MSW)** (fim da página) abre um painel lateral que usa esses endpoints sobre a edição selecionada: preço +0,01 e estoque −1, reduzir estoque para 1, esgotar, repor estoque e derrubar a conexão Socket.IO.
+
+### Reproduzir os fluxos do detalhe
+
+- Edição por link: `/nfts/nft-001?edition=ed-open` (edição inexistente na URL é trocada pela padrão).
+- Edição esgotada: `/nfts/nft-distant-galaxy?edition=ed-genesis`.
+- Estoque menor que o limite por pedido: `/nfts/nft-001` (1/50: 3 disponíveis, máx. 5).
+- Estoque caindo em tempo real: em `/nfts/nft-distant-galaxy`, aumente a quantidade para 5 e use **Simulação (MSW) → Reduzir estoque para 1**.
+- Falha nas avaliações: `?scenario=server-error` e abra a aba "Avaliações"; volte com `?scenario=default` e "Tentar novamente".
 
 ## Testes
 

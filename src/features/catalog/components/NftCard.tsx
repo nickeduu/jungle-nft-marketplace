@@ -2,14 +2,18 @@ import { Link } from '@tanstack/react-router'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { NftSummary } from '@/shared/contracts'
 import { formatEth } from '@/shared/lib/eth'
+import { cn } from '@/shared/lib/utils'
 
 /** Catalog card (Figma: desktop-01-inicio / mobile-01-inicio). */
-export function NftCard({ nft, priority = false }: { nft: NftSummary; priority?: boolean }) {
+export function NftCard({ nft, priority = false, className }: { nft: NftSummary; priority?: boolean; className?: string }) {
   const soldOut = nft.totalAvailable === 0
   const rare = nft.tags.includes('rare')
   return (
     <li
-      className="group relative rounded-xl bg-surface-raised p-2.5 transition-colors focus-within:ring-2 focus-within:ring-ring hover:bg-accent"
+      className={cn(
+        'group relative rounded-xl bg-surface-raised p-2.5 transition-colors focus-within:ring-2 focus-within:ring-ring hover:bg-accent',
+        className,
+      )}
       data-testid="nft-card"
       data-nft-id={nft.id}
       data-category={nft.category}
@@ -57,9 +61,9 @@ export function NftCard({ nft, priority = false }: { nft: NftSummary; priority?:
 }
 
 /** Same footprint as NftCard (image + two text lines) to avoid layout shift. */
-export function NftCardSkeleton() {
+export function NftCardSkeleton({ className }: { className?: string }) {
   return (
-    <li className="rounded-xl bg-surface-raised p-2.5" aria-hidden="true">
+    <li className={cn('rounded-xl bg-surface-raised p-2.5', className)} aria-hidden="true">
       <Skeleton className="aspect-square w-full rounded-lg" />
       <Skeleton className="mt-3 h-5 w-3/4" />
       <Skeleton className="mt-1 h-5 w-1/3" />

@@ -13,4 +13,5 @@ export const nftKeys = {
   highlights: () => [...nftKeys.collections(), 'highlights'] as const,
   facets: () => [...nftKeys.collections(), 'facets'] as const,
   detail: (nftId: string) => [...nftKeys.all, 'detail', nftId] as const,
+  reviews: (nftId: string) => [...nftKeys.all, 'reviews', nftId] as const,
 }

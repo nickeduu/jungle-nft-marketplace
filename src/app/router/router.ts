@@ -20,4 +20,8 @@ declare module '@tanstack/react-router' {
   interface Register {
     router: ReturnType<typeof createAppRouter>
   }
+  interface StaticDataRouteOption {
+    /** Mobile: the route renders its own bottom bar, so the app's bottom navigation is hidden. */
+    hideMobileNav?: boolean
+  }
 }

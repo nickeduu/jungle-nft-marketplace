@@ -1,7 +1,8 @@
 import { http, HttpResponse } from 'msw'
 import { applyScenario, errorResponse, isEmptyListScenario } from '@/mocks/scenarios'
+import { reviewFixtures } from '@/mocks/fixtures/nfts'
 import { nftsTable } from '@/mocks/store/db'
-import type { Nft, NftFacets, NftSummary, Paginated } from '@/shared/contracts'
+import type { Nft, NftFacets, NftReview, NftSummary, Paginated } from '@/shared/contracts'
 import { buildFacets, highlights, parseListQuery, queryNfts } from './nft-query'
 
 const base = import.meta.env.VITE_API_BASE_URL
@@ -40,5 +41,15 @@ export const nftHandlers = [
     if (failure) return failure
     if (!nft) return errorResponse(404, 'NOT_FOUND', 'NFT não encontrado.')
     return HttpResponse.json<Nft>(nft)
+  }),
+
+  // Read-only collector reviews (fixtures); the aggregate lives in `Nft.rating`.
+  http.get<{ nftId: string }>(`${base}/nfts/:nftId/reviews`, async ({ params }) => {
+    const exists = nftsTable.findById(params.nftId) !== undefined
+
+    const failure = await applyScenario('nft-reviews')
+    if (failure) return failure
+    if (!exists) return errorResponse(404, 'NOT_FOUND', 'NFT não encontrado.')
+    return HttpResponse.json<NftReview[]>(reviewFixtures[params.nftId] ?? [])
   }),
 ]

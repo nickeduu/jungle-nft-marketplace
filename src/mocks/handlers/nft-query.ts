@@ -22,6 +22,7 @@ const MAX_QUERY_LENGTH = 100
 export interface ParsedListQuery {
   q: string
   tab: NftTab | null
+  collection: string | null
   categories: string[]
   networks: Network[]
   minPriceEth: string | null
@@ -46,6 +47,11 @@ export function parseListQuery(params: URLSearchParams): ParseResult {
 
   const q = (params.get('q') ?? '').trim()
   if (q.length > MAX_QUERY_LENGTH) fieldErrors.q = `Busca deve ter até ${MAX_QUERY_LENGTH} caracteres.`
+
+  const collection = params.get('collection')?.trim() ?? null
+  if (collection !== null && (collection.length === 0 || collection.length > MAX_QUERY_LENGTH)) {
+    fieldErrors.collection = `Coleção deve ter de 1 a ${MAX_QUERY_LENGTH} caracteres.`
+  }
 
   const tabRaw = params.get('tab')
   const tab = tabRaw === null ? null : (NFT_TABS.find((t) => t === tabRaw) ?? null)
@@ -91,7 +97,7 @@ export function parseListQuery(params: URLSearchParams): ParseResult {
   return {
     ok: true,
     query: {
-      q, tab, categories, networks, minPriceEth, maxPriceEth,
+      q, tab, collection, categories, networks, minPriceEth, maxPriceEth,
       availableOnly: availableRaw === 'true', sort, page, pageSize,
     },
   }
@@ -128,6 +134,7 @@ export function queryNfts(nfts: Nft[], query: ParsedListQuery): Paginated<NftSum
   const matches = nfts
     .filter((nft) => !term || [nft.name, nft.collection, nft.creator.name].some((field) => normalize(field).includes(term)))
     .filter((nft) => query.tab === null || nft.tags.includes(query.tab))
+    .filter((nft) => query.collection === null || nft.collection === query.collection)
     .filter((nft) => categories.size === 0 || categories.has(nft.category))
     .filter((nft) => networks.size === 0 || networks.has(nft.network))
     .map((nft) => ({ nft, summary: toSummary(nft) }))

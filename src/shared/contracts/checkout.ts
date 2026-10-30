@@ -4,6 +4,13 @@ import type { EthDecimal, IsoDateTime } from './common'
 export const NETWORKS = ['ethereum', 'polygon', 'solana'] as const
 export type Network = (typeof NETWORKS)[number]
 
+/** Display names of the networks (same labels as the catalog facets). */
+export const NETWORK_LABELS: Record<Network, string> = {
+  ethereum: 'Ethereum',
+  polygon: 'Polygon',
+  solana: 'Solana',
+}
+
 export type WalletSlot = 'primary' | 'secondary'
 
 export interface Wallet {
