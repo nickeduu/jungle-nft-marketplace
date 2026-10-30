@@ -2,7 +2,7 @@
 
 Solução do [desafio Front-end da Jungle Gaming](https://github.com/junglegaming/frontend-challenge): marketplace de NFTs em React + TypeScript com APIs, autenticação, carteiras, pagamentos e tempo real **simulados na camada de rede** (MSW + Socket.IO).
 
-> **Status:** Etapa 1 — fundação técnica. A integração ponta a ponta está comprovada em uma tela de demonstração (detalhe de NFT). As telas do Figma são implementadas nas próximas etapas.
+> **Status:** Etapa 2 — Início (destaques + catálogo com busca, abas, filtros, ordenação e paginação na URL) conforme o Figma. Detalhe do NFT ainda com layout provisório; demais telas nas próximas etapas.
 
 ## Stack
 
@@ -69,6 +69,8 @@ O estado simulado fica em `localStorage` (sobrevive a refresh). Cenários de red
 | `slow` | Latência de 2,5 s (skeletons) |
 | `server-error` | HTTP 500 `TRANSIENT_FAILURE` |
 | `offline` | Falha de conexão |
+| `empty` | Listagens e destaques sem resultados |
+| `out-of-order` | Latência alternada por endpoint (2000 ms, 100 ms, …): respostas fora de ordem |
 
 - Selecionar: abrir qualquer URL com `?scenario=<nome>` (fica persistido).
 - Endpoints de controle (somente mocks, prefixo `/api/__mock`):

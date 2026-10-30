@@ -15,7 +15,7 @@ React, TypeScript, TanStack Router, TanStack Query, Axios, REST, Socket.IO (sock
 - Eventos em tempo real entram apenas por `socket.io-client` → `RealtimeProvider` → cache do Query. Proibido simular evento chamando setters/cache direto.
 - Mudança de dados simulados: alterar o store do mock **e** emitir o evento correspondente.
 - Não adicionar Redux/Zustand ou libs novas sem justificativa registrada em `ARCHITECTURE.md`.
-- Não importar `socket.io-client` antes de o MSW iniciar (ver `main.tsx`).
+- Socket.IO só com a transport de `services/realtime/socket.ts` (resolve o `WebSocket` na conexão, permitindo carregar a app em paralelo ao MSW). Nunca usar a transport padrão `websocket`; renderizar só após o MSW iniciar (`main.tsx`).
 - MSW fixo em 2.x enquanto `@mswjs/socket.io-binding` publicado exigir `msw ^2`.
 
 ## Validação (rodar antes de declarar algo pronto)

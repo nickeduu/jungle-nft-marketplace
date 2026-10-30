@@ -1,28 +1,28 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { Button } from '@/components/ui/button'
+import { createFileRoute } from '@tanstack/react-router'
+import { useCallback } from 'react'
+import { CatalogPage, type CatalogPatch } from '@/features/catalog/CatalogPage'
+import { validateCatalogSearch } from '@/features/catalog/search-params'
 
-/** Temporary home: the full catalog is built in the next stage. */
+/** Home: highlights + catalog. All catalog state lives in the URL search params. */
 export const Route = createFileRoute('/')({
-  component: HomePage,
+  validateSearch: validateCatalogSearch,
+  component: HomeRoute,
 })
 
-function HomePage() {
-  return (
-    <section className="py-16">
-      <h1 className="text-3xl font-semibold">NFT Marketplace</h1>
-      <p className="mt-2 text-muted-foreground">Fundação técnica — demonstração da integração.</p>
-      <div className="mt-6 flex flex-wrap gap-3">
-        <Button asChild>
-          <Link to="/nfts/$nftId" params={{ nftId: 'nft-distant-galaxy' }}>
-            Ver NFT de demonstração
-          </Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link to="/nfts/$nftId" params={{ nftId: 'nao-existe' }}>
-            NFT inexistente
-          </Link>
-        </Button>
-      </div>
-    </section>
+function HomeRoute() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
+
+  // Any filter/search/sort change resets pagination. Typing replaces the history entry.
+  const onChange = useCallback(
+    (patch: CatalogPatch, options?: { replace?: boolean }) =>
+      void navigate({ search: (prev) => ({ ...prev, ...patch, page: undefined }), replace: options?.replace ?? false }),
+    [navigate],
   )
+  const onClear = useCallback(
+    () => void navigate({ search: (prev) => (prev.sort ? { sort: prev.sort } : {}) }),
+    [navigate],
+  )
+
+  return <CatalogPage search={search} onChange={onChange} onClear={onClear} />
 }

@@ -1,31 +1,42 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource-variable/roboto-mono/wght.css";
 
-@custom-variant dark (&:is(.dark *));
-
+/*
+ * Kurio design tokens — sampled from the Figma captures (docs/figma-references/INDEX.md).
+ * The layout is dark-only in the Figma, so there is a single theme.
+ * Contrast (WCAG): foreground/background 15.9:1, muted-foreground/card 7.4:1,
+ * primary/card 5.2:1, primary-foreground/primary 7.0:1.
+ */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  color-scheme: dark;
+  --radius: 0.75rem;
+
+  --background: #120e08;
+  --foreground: #f3ece4;
+  --card: #231812;
+  --card-foreground: #f3ece4;
+  --surface-raised: #291b13;
+  --surface-band: #36230d;
+  --popover: #1c140e;
+  --popover-foreground: #f3ece4;
+  --primary: #d28a49;
+  --primary-foreground: #120e08;
+  --secondary: #2e2119;
+  --secondary-foreground: #f3ece4;
+  --muted: #2a1e16;
+  --muted-foreground: #bfa58a;
+  --accent: #3a2a1f;
+  --accent-foreground: #f3ece4;
+  --destructive: #b2412c;
+  --border: #3a2b20;
+  --input: #3a2b20;
+  --ring: #d28a49;
 }
 
 @theme inline {
+  --font-sans: "Roboto Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: "Roboto Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -34,6 +45,8 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-band: var(--surface-band);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -55,6 +68,33 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+}
+
+/* Skeleton shimmer (README: "skeletons com shimmer effect"); disabled for reduced motion. */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@layer components {
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.06), transparent);
+    animation: shimmer 1.4s infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .shimmer::after {
+      animation: none;
+    }
   }
 }

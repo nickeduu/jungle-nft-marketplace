@@ -5,13 +5,20 @@ import type { ApiErrorBody, ApiErrorCode } from '@/shared/contracts'
  * Network/failure scenarios, selected by `?scenario=<name>` (persisted in localStorage)
  * so dev, demo build and Playwright share the exact same, reproducible behavior.
  */
-export type ScenarioName = 'default' | 'slow' | 'server-error' | 'offline'
+export type ScenarioName = 'default' | 'slow' | 'server-error' | 'offline' | 'empty' | 'out-of-order'
 
 interface Scenario {
   /** Fixed latency (ms) — deterministic. */
   latencyMs: number
+  /**
+   * Per-endpoint latency sequence, cycled by call count (overrides latencyMs).
+   * [2000, 100] makes each odd call slower than the next one: responses arrive out of order.
+   */
+  latencySequenceMs?: number[]
   /** Forces this outcome on every non-control endpoint. */
   failure?: 'http-500' | 'network'
+  /** List endpoints return no results. */
+  emptyLists?: boolean
 }
 
 const SCENARIOS: Record<ScenarioName, Scenario> = {
@@ -19,7 +26,12 @@ const SCENARIOS: Record<ScenarioName, Scenario> = {
   slow: { latencyMs: 2500 },
   'server-error': { latencyMs: 150, failure: 'http-500' },
   offline: { latencyMs: 0, failure: 'network' },
+  empty: { latencyMs: 150, emptyLists: true },
+  'out-of-order': { latencyMs: 150, latencySequenceMs: [2000, 100] },
 }
+
+/** Call counters per endpoint (in memory: reset on reload, like a fresh server connection). */
+const callCounts = new Map<string, number>()
 
 const STORAGE_KEY = 'jungle-mock-scenario'
 
@@ -47,13 +59,21 @@ export function errorResponse(status: number, code: ApiErrorCode, message: strin
   return HttpResponse.json(body, { status })
 }
 
+export function isEmptyListScenario() {
+  return SCENARIOS[getActiveScenarioName()].emptyLists === true
+}
+
 /**
- * Applies latency/failure of the active scenario.
+ * Applies latency/failure of the active scenario to one endpoint.
  * Returns a Response to short-circuit the handler, or undefined to continue normally.
  */
-export async function applyScenario(): Promise<Response | undefined> {
+export async function applyScenario(endpoint: string): Promise<Response | undefined> {
   const scenario = SCENARIOS[getActiveScenarioName()]
-  if (scenario.latencyMs > 0) await delay(scenario.latencyMs)
+  const call = callCounts.get(endpoint) ?? 0
+  callCounts.set(endpoint, call + 1)
+  const sequence = scenario.latencySequenceMs
+  const latency = sequence?.length ? (sequence[call % sequence.length] ?? scenario.latencyMs) : scenario.latencyMs
+  if (latency > 0) await delay(latency)
   if (scenario.failure === 'network') return HttpResponse.error()
   if (scenario.failure === 'http-500') return errorResponse(500, 'TRANSIENT_FAILURE', 'Serviço temporariamente indisponível.')
   return undefined

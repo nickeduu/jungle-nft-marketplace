@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { nftKeys } from '@/features/nft-detail/api'
-import { applyNftUpdated, EventDeduper } from './apply-events'
+import { nftKeys } from '@/shared/query-keys'
+import { applyNftUpdated, EventDeduper, invalidateNftLists } from './apply-events'
 import { createRealtimeSocket } from './socket'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
@@ -30,7 +30,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     })
     socket.on('disconnect', () => setStatus('disconnected'))
     socket.on('nft.updated', (event) => {
-      if (deduper.markFirstSeen(event.eventId)) applyNftUpdated(queryClient, event)
+      if (!deduper.markFirstSeen(event.eventId)) return
+      applyNftUpdated(queryClient, event)
+      void invalidateNftLists(queryClient)
     })
 
     socket.connect()

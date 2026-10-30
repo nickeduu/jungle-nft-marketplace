@@ -7,8 +7,7 @@ const NFT_URL = '/nfts/nft-distant-galaxy'
 test.describe('Fundação: React → Query → Axios → MSW', () => {
   test('carrega o NFT a partir do handler MSW (Service Worker)', async ({ page }) => {
     const apiResponse = page.waitForResponse((r) => r.url().endsWith('/api/nfts/nft-distant-galaxy'))
-    await page.goto('/')
-    await page.getByRole('link', { name: 'Ver NFT de demonstração' }).click()
+    await page.goto(NFT_URL)
 
     const response = await apiResponse
     expect(response.status()).toBe(200)
@@ -68,6 +67,20 @@ test.describe('Fundação: Socket.IO via MSW', () => {
     await expect(page.getByTestId('edition-ed-standard').getByTestId('edition-price')).toHaveText('1.75 ETH')
   })
 
+  test('evento recebido com a resposta REST em trânsito não é perdido', async ({ page }) => {
+    // slow: the detail response (read before the change) stays in transit for 2.5 s.
+    await page.goto(`${NFT_URL}?scenario=slow`)
+    await expect(page.getByTestId('realtime-status')).toHaveAttribute('data-status', 'connected')
+    await expect(page.getByTestId('nft-detail-skeleton')).toBeVisible()
+
+    const result = await mockControl(page, '/nfts/nft-distant-galaxy/editions/ed-standard', { priceEth: '3' })
+    expect(result.json).toMatchObject({ deliveredTo: 1 })
+
+    // The stale in-flight response must not win: the client refetches after the event.
+    await expect(page.getByTestId('edition-ed-standard').getByTestId('edition-price')).toHaveText('3 ETH', { timeout: 15_000 })
+    await expect(page.getByTestId('nft-detail')).toHaveAttribute('data-version', '2')
+  })
+
   test('ignora eventos duplicados e antigos (versão)', async ({ page }) => {
     await page.goto(NFT_URL)
     await expect(page.getByTestId('realtime-status')).toHaveAttribute('data-status', 'connected')
@@ -120,6 +133,9 @@ test.describe('Fundação: Socket.IO via MSW', () => {
     await page.clock.install()
     await page.goto(NFT_URL)
     await expect(page.getByTestId('realtime-status')).toHaveAttribute('data-status', 'connected')
+    // Data must be loaded before fast-forwarding: the fake clock would otherwise fire the
+    // 10 s Axios timeout while the response is still travelling through the Service Worker.
+    await expect(page.getByTestId('nft-detail')).toBeVisible()
     const transitions = await recordRealtimeTransitions(page)
 
     // Without mock heartbeats the client drops at 30s (pingInterval + pingTimeout) and reconnects.

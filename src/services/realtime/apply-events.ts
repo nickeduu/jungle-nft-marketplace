@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { nftKeys } from '@/features/nft-detail/api'
+import { nftKeys } from '@/shared/query-keys'
 import type { Nft, NftUpdatedEvent } from '@/shared/contracts'
 
 /** Remembers recently applied event ids to ignore duplicates (bounded memory). */
@@ -25,11 +25,26 @@ export class EventDeduper {
 
 /**
  * Applies `nft.updated` to the cached detail only if the event is newer than the cache.
- * Stale (version <= cached) events never regress state. If the NFT is not cached,
- * nothing is written: the next fetch reads the current REST state.
+ * Stale (version <= cached) events never regress state.
+ *
+ * Race: if the detail is still loading (or refetching), the response in transit may have been
+ * read before this change. Then the query is invalidated, which cancels the in-flight request
+ * and refetches, instead of dropping the event. An NFT nobody has queried is ignored: its
+ * first fetch already reads the current REST state.
  */
 export function applyNftUpdated(queryClient: QueryClient, event: NftUpdatedEvent) {
-  queryClient.setQueryData<Nft>(nftKeys.detail(event.resource.id), (current) => {
+  const queryKey = nftKeys.detail(event.resource.id)
+  const state = queryClient.getQueryState(queryKey)
+  if (state && (state.data === undefined || state.fetchStatus === 'fetching')) {
+    // Explicit cancel: for a first load (no data) invalidate() alone would reuse the
+    // in-flight promise instead of cancelling it, and the stale response would win.
+    void queryClient
+      .cancelQueries({ queryKey, exact: true })
+      .then(() => queryClient.invalidateQueries({ queryKey, exact: true }))
+    if (state.data === undefined) return
+  }
+
+  queryClient.setQueryData<Nft>(queryKey, (current) => {
     if (!current || event.version <= current.version) return current
     const patches = new Map(event.data.editions.map((e) => [e.id, e]))
     return {
@@ -42,4 +57,14 @@ export function applyNftUpdated(queryClient: QueryClient, event: NftUpdatedEvent
       }),
     }
   })
+}
+
+/**
+ * Catalog lists, highlights and facets are not patched in place: a price/stock change can change filter
+ * membership and ordering, which only the API can compute. Active lists refetch.
+ */
+export async function invalidateNftLists(queryClient: QueryClient) {
+  // Same race as the detail: a first load in flight may predate the event (see above).
+  await queryClient.cancelQueries({ queryKey: nftKeys.collections() })
+  return queryClient.invalidateQueries({ queryKey: nftKeys.collections() })
 }

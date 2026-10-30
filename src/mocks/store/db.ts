@@ -9,7 +9,7 @@ import type { Nft } from '@/shared/contracts'
  * Persisted in localStorage to survive refresh; `resetDb()` restores the seed exactly.
  */
 interface DbState {
-  schemaVersion: 1
+  schemaVersion: 4
   nfts: Record<string, Nft>
 }
 
@@ -17,7 +17,7 @@ const STORAGE_KEY = 'jungle-mock-db'
 
 function seed(): DbState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 4,
     nfts: Object.fromEntries(nftFixtures.map((nft) => [nft.id, structuredClone(nft)])),
   }
 }
@@ -27,7 +27,7 @@ function load(): DbState {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as DbState
-      if (parsed.schemaVersion === 1) return parsed
+      if (parsed.schemaVersion === 4) return parsed
     }
   } catch {
     // Corrupted or unavailable storage: fall back to the seed.
@@ -51,6 +51,10 @@ export function resetDb() {
 }
 
 export const nftsTable = {
+  list(): Nft[] {
+    return Object.values(state.nfts).map((nft) => structuredClone(nft))
+  },
+
   findById(id: string): Nft | undefined {
     const nft = state.nfts[id]
     return nft ? structuredClone(nft) : undefined

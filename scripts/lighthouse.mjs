@@ -53,7 +53,10 @@ function chromePath() {
   }
 }
 
-const preview = spawn(`npx vite preview --port ${PORT} --strictPort`, { shell: true, stdio: 'ignore' })
+// Run Vite directly with this Node binary (no shell): killing `preview` then stops the server itself.
+const preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], {
+  stdio: 'ignore',
+})
 const outDir = join('lighthouse-reports', new Date().toISOString().replace(/[:.]/g, '-'))
 await mkdir(outDir, { recursive: true })
 
@@ -106,5 +109,4 @@ try {
   console.log(`\nReports: ${outDir}`)
 } finally {
   preview.kill()
-  if (process.platform === 'win32' && preview.pid) spawn('taskkill', ['/pid', String(preview.pid), '/T', '/F'], { stdio: 'ignore' })
 }

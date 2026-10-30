@@ -28,7 +28,8 @@ export default defineConfig({
   webServer: {
     command: isDev ? 'npm run dev' : 'npm run build && npm run preview',
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse: a leftover preview would serve a stale dist/ without rebuilding.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 })

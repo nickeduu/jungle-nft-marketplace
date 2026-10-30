@@ -1,28 +1,22 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
 import './styles/index.css'
 
-async function enableMocking() {
-  if (import.meta.env.VITE_ENABLE_MOCKS !== 'true') return
-  const { startMockWorker } = await import('./mocks/browser')
-  await startMockWorker()
-}
-
 /**
- * The app is imported only AFTER MSW starts: engine.io-client captures
- * `globalThis.WebSocket` at module evaluation, so importing socket.io-client
- * earlier would bypass the WebSocket interception.
+ * The mock worker and the app (React included) download in parallel; the app is rendered
+ * only after MSW is active, so no request or socket can bypass the mocks.
+ * Evaluating the app before MSW patches WebSocket is safe: the Socket.IO transport resolves
+ * `globalThis.WebSocket` at connect time (services/realtime/socket.ts), and connections are
+ * only opened after render.
  */
+const mocksReady =
+  import.meta.env.VITE_ENABLE_MOCKS === 'true'
+    ? import('./mocks/browser').then(({ startMockWorker }) => startMockWorker())
+    : Promise.resolve()
+
 async function bootstrap() {
-  await enableMocking()
-  const { App } = await import('./app/App')
+  const [, { mount }] = await Promise.all([mocksReady, import('./app/mount')])
   const rootElement = document.getElementById('root')
   if (!rootElement) throw new Error('Root element #root not found')
-  createRoot(rootElement).render(
-    <StrictMode>
-      <App />
-    </StrictMode>,
-  )
+  mount(rootElement)
 }
 
 void bootstrap()

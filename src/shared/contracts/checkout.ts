@@ -1,6 +1,8 @@
 import type { EthDecimal, IsoDateTime } from './common'
 
-export type Network = 'ethereum' | 'polygon' | 'arbitrum'
+/** Networks shown in the Figma (catalog filter and wallet selection). */
+export const NETWORKS = ['ethereum', 'polygon', 'solana'] as const
+export type Network = (typeof NETWORKS)[number]
 
 export type WalletSlot = 'primary' | 'secondary'
 
