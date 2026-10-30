@@ -1,31 +1,51 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { nftKeys } from '@/shared/query-keys'
-import { applyNftUpdated, EventDeduper, invalidateNftLists } from './apply-events'
+import { nftKeys, privateKeys } from '@/shared/query-keys'
+import { applyFavoritesUpdated, applyNftUpdated, EventDeduper, invalidateNftLists } from './apply-events'
 import { createRealtimeSocket } from './socket'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
 
 const RealtimeStatusContext = createContext<RealtimeStatus>('connecting')
 
+export interface RealtimeSession {
+  /** False while a stored token is still being validated: no socket is opened yet. */
+  resolved: boolean
+  token: string | null
+  userId: string | null
+}
+
 /**
  * Owns the Socket.IO connection lifecycle and bridges events into the Query cache.
+ *
+ * One socket per session: the connection is created with the session token in the handshake
+ * (`auth.token`; visitors connect without one and get public events only). When the session
+ * changes (login, logout, expiry, another user) the previous socket is closed — its listeners,
+ * deduper and pending events go with it — and a new one is opened for the new session.
  * Listeners are removed and the socket closed on unmount.
- * (Next stage: recreate per session so events never cross users.)
  */
-export function RealtimeProvider({ children }: { children: ReactNode }) {
+export function RealtimeProvider({ session, children }: { session: RealtimeSession; children: ReactNode }) {
   const queryClient = useQueryClient()
-  const [status, setStatus] = useState<RealtimeStatus>('connecting')
+  const { resolved: sessionResolved, token, userId } = session
+  // The status belongs to the socket of one session: a new session starts at "connecting".
+  const sessionKey = `${sessionResolved}:${token ?? 'visitor'}`
+  const [reported, setReported] = useState<{ sessionKey: string; status: RealtimeStatus }>({ sessionKey, status: 'connecting' })
+  const status = reported.sessionKey === sessionKey ? reported.status : 'connecting'
 
   useEffect(() => {
-    const socket = createRealtimeSocket()
+    if (!sessionResolved) return
+    const socket = createRealtimeSocket({ token })
     const deduper = new EventDeduper()
     let hasConnectedBefore = false
+    const setStatus = (next: RealtimeStatus) => setReported({ sessionKey, status: next })
 
     socket.on('connect', () => {
       setStatus('connected')
       // After a reconnection, events may have been missed: reconcile with REST.
-      if (hasConnectedBefore) void queryClient.invalidateQueries({ queryKey: nftKeys.all })
+      if (hasConnectedBefore) {
+        void queryClient.invalidateQueries({ queryKey: nftKeys.all })
+        if (userId) void queryClient.invalidateQueries({ queryKey: privateKeys.user(userId) })
+      }
       hasConnectedBefore = true
     })
     socket.on('disconnect', () => setStatus('disconnected'))
@@ -34,13 +54,17 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       applyNftUpdated(queryClient, event)
       void invalidateNftLists(queryClient)
     })
+    socket.on('favorites.updated', (event) => {
+      if (!deduper.markFirstSeen(event.eventId)) return
+      applyFavoritesUpdated(queryClient, event, userId)
+    })
 
     socket.connect()
     return () => {
       socket.removeAllListeners()
       socket.disconnect()
     }
-  }, [queryClient])
+  }, [queryClient, sessionKey, sessionResolved, token, userId])
 
   return <RealtimeStatusContext value={status}>{children}</RealtimeStatusContext>
 }

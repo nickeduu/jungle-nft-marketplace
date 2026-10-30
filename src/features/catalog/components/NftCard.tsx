@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { Skeleton } from '@/components/ui/skeleton'
+import { FavoriteButton } from '@/features/favorites/components/FavoriteButton'
 import type { NftSummary } from '@/shared/contracts'
 import { formatEth } from '@/shared/lib/eth'
 import { cn } from '@/shared/lib/utils'
@@ -37,10 +38,12 @@ export function NftCard({ nft, priority = false, className }: { nft: NftSummary;
           </span>
         )}
         {soldOut && (
-          <span className="absolute top-2 right-2 rounded-sm bg-background/90 px-2 py-0.5 text-[11px] font-semibold text-foreground">
+          <span className="absolute bottom-2 left-2 rounded-sm bg-background/90 px-2 py-0.5 text-[11px] font-semibold text-foreground">
             Esgotado
           </span>
         )}
+        {/* Above the stretched link (z-10), so it is its own target (Figma mobile-01 heart). */}
+        <FavoriteButton nftId={nft.id} nftName={nft.name} variant="icon" className="absolute top-2 right-2 z-10 size-9" />
       </div>
       <h3 className="mt-3 truncate px-0.5 text-sm">
         {/* Stretched link: the whole card is clickable with a single focusable element. */}

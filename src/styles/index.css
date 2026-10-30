@@ -29,6 +29,8 @@
   --accent: #3a2a1f;
   --accent-foreground: #f3ece4;
   --destructive: #b2412c;
+  /* Error text on dark surfaces (form messages): 7.6:1 on --popover. */
+  --danger: #f08a73;
   --border: #3a2b20;
   --input: #3a2b20;
   --ring: #d28a49;
@@ -58,6 +60,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-danger: var(--danger);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

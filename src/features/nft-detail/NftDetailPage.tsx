@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useCanGoBack, useRouter } from '@tanstack/react-router'
-import { ChevronLeft, Heart } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { FavoriteButton } from '@/features/favorites/components/FavoriteButton'
 import { MockPanel } from '@/mocks/devtools/MockPanel'
 import { ApiError } from '@/services/api/http'
 import type { Nft, NftEdition } from '@/shared/contracts'
@@ -136,7 +137,7 @@ function NftDetailContent({
       // Mobile: room for the fixed purchase bar, so it never hides the end of the page.
       className="pb-[calc(14rem+env(safe-area-inset-bottom))] md:pb-0"
     >
-      <MobileTopBar onFavorite={() => onUnavailable('favorite')} />
+      <MobileTopBar nftId={nft.id} nftName={nft.name} />
       <Breadcrumb name={nft.name} />
 
       <div className="grid gap-5 md:mt-4 md:grid-cols-2 md:gap-10">
@@ -177,7 +178,14 @@ function NftDetailContent({
             </p>
 
             {edition && (
-              <PurchasePanel key={edition.id} edition={edition} actionNotice={actionNotice} onUnavailable={onUnavailable} />
+              <PurchasePanel
+                key={edition.id}
+                nftId={nft.id}
+                nftName={nft.name}
+                edition={edition}
+                actionNotice={actionNotice}
+                onUnavailable={onUnavailable}
+              />
             )}
 
             <dl className="space-y-1.5 text-xs text-muted-foreground md:text-sm">
@@ -240,7 +248,7 @@ function Breadcrumb({ name }: { name: string }) {
 }
 
 /** Mobile header (Figma mobile-02): back and favorite. */
-function MobileTopBar({ onFavorite }: { onFavorite: () => void }) {
+function MobileTopBar({ nftId, nftName }: { nftId: string; nftName: string }) {
   const router = useRouter()
   const canGoBack = useCanGoBack()
   const circle =
@@ -255,16 +263,7 @@ function MobileTopBar({ onFavorite }: { onFavorite: () => void }) {
       >
         <ChevronLeft className="size-5" aria-hidden="true" />
       </button>
-      <button
-        type="button"
-        aria-label="Favoritar"
-        aria-disabled="true"
-        title={UNAVAILABLE_MESSAGES.favorite}
-        className={`${circle} aria-disabled:opacity-70`}
-        onClick={onFavorite}
-      >
-        <Heart className="size-5" aria-hidden="true" />
-      </button>
+      <FavoriteButton nftId={nftId} nftName={nftName} variant="icon" />
     </div>
   )
 }

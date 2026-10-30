@@ -15,3 +15,18 @@ export const nftKeys = {
   detail: (nftId: string) => [...nftKeys.all, 'detail', nftId] as const,
   reviews: (nftId: string) => [...nftKeys.all, 'reviews', nftId] as const,
 }
+
+export const authKeys = {
+  session: () => ['auth', 'session'] as const,
+}
+
+/**
+ * Data of the signed-in user. Every key starts with ['private', userId], so one user's cache
+ * entries can never be read under another user's id, and logout/user switch removes them as a group.
+ */
+export const privateKeys = {
+  all: ['private'] as const,
+  user: (userId: string) => [...privateKeys.all, userId] as const,
+  profile: (userId: string) => [...privateKeys.user(userId), 'profile'] as const,
+  favorites: (userId: string) => [...privateKeys.user(userId), 'favorites'] as const,
+}

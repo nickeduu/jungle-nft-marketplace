@@ -15,6 +15,9 @@ src/
     layout/                AppShell
   features/<feature>/      api.ts (funções Axios + queryOptions) e componentes
     catalog/               Início: hero de destaques, busca, abas, filtros, ordenação, paginação
+    auth/                  sessão (query + ciclo de vida), guardas, login, cadastro, SessionSync
+    favorites/             lista de interesse, FavoriteButton, mutation otimista
+    profile/               perfil e layout da área "Meu perfil"
     nft-detail/            detalhe do NFT: galeria, edições (?edition=), quantidade, avaliações, compartilhamento, "Mais desta coleção"
   services/
     api/http.ts            instância Axios + normalização de erros (ApiError)
@@ -31,12 +34,12 @@ src/
     store/db.ts            "banco" do mock (persistência + reset)
     scenarios/             latência e falhas configuráveis
     devtools/              painel de simulação (apenas com mocks ativos)
-tests/e2e/                 Playwright (foundation.spec.ts, catalog.spec.ts, nft-detail.spec.ts)
+tests/e2e/                 Playwright (foundation, catalog, nft-detail, auth, favorites)
 docs/figma-references/     capturas do Figma + INDEX.md (tokens extraídos)
 scripts/lighthouse.mjs     auditoria reproduzível
 ```
 
-Pastas das demais features (`cart`, `checkout`, `auth`, `profile`, `wallets`, `orders`) serão criadas quando houver código.
+Pastas das demais features (`cart`, `checkout`, `wallets`, `orders`) serão criadas quando houver código.
 
 ## 2. Responsabilidades
 
@@ -64,19 +67,19 @@ Controle /api/__mock → store do mock → emitToAll('nft.updated') → WebSocke
 - Valores em ETH: `EthDecimal` (string decimal, até 18 casas). Aritmética em `shared/lib/eth.ts` com `BigInt` em wei; nunca `Number`.
 - Quantidades: inteiros.
 - `Nft` (detalhe): `tokenId`, `description` (resumo) e `longDescription` (aba Detalhes), `attributes[]`, `rating { average, count }` (agregado das avaliações), `contract { address, standard }`, `royaltyPercent`, `images[]` (a primeira é a capa das listagens) e `editions[]` na ordem de exibição. Edição: `supply: null` = edição aberta; limite de compra = `min(available, maxPerOrder)`.
-- Erros: `{ error: { code, message, fieldErrors? } }` com códigos `VALIDATION_ERROR`, `UNAUTHENTICATED`, `SESSION_EXPIRED`, `FORBIDDEN`, `NOT_FOUND`, `EMAIL_TAKEN`, `AVAILABILITY_CONFLICT`, `PRICE_CHANGED`, `QUOTE_EXPIRED`, `COUPON_INVALID`, `COUPON_EXPIRED`, `IDEMPOTENCY_CONFLICT`, `PAYMENT_REJECTED`, `TRANSIENT_FAILURE`. Falhas de rede/timeout viram `NETWORK_ERROR`/`TIMEOUT` no cliente.
+- Erros: `{ error: { code, message, fieldErrors? } }` com códigos `VALIDATION_ERROR`, `UNAUTHENTICATED`, `SESSION_EXPIRED`, `FORBIDDEN`, `NOT_FOUND`, `EMAIL_TAKEN`, `AVAILABILITY_CONFLICT`, `PRICE_CHANGED`, `QUOTE_EXPIRED`, `COUPON_INVALID`, `COUPON_EXPIRED`, `IDEMPOTENCY_CONFLICT`, `PAYMENT_REJECTED`, `TRANSIENT_FAILURE` e `USERNAME_TAKEN`. Falhas de rede/timeout viram `NETWORK_ERROR`/`TIMEOUT` no cliente.
 
 ### REST (planejado; ✅ = implementado)
 
 | Recurso | Endpoints |
 | --- | --- |
-| Sessão | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/session`, `POST /api/auth/logout` |
+| Sessão | ✅ `POST /api/auth/register` `{ username, email, password }` → 201 `Session` (422 `fieldErrors`; 409 `EMAIL_TAKEN`/`USERNAME_TAKEN`); ✅ `POST /api/auth/login` `{ email, password }` → `Session` (401 "E-mail ou senha incorretos." — mesma resposta para e-mail inexistente); ✅ `GET /api/auth/session` → `Session` (401 `UNAUTHENTICATED`/`SESSION_EXPIRED`); ✅ `POST /api/auth/logout` → 204 (idempotente). Autenticação: `Authorization: Bearer <token>` |
 | NFTs | ✅ `GET /api/nfts?q&tab&collection&category*&network*&minPriceEth&maxPriceEth&availableOnly&sort&page&pageSize` → `Paginated<NftSummary>` (`*` = chave repetida; `collection` = nome exato, usado por "Mais desta coleção"; inválidos → 422 com `fieldErrors`); ✅ `GET /api/nfts/facets` → `NftFacets` (coleções/redes com contagem, faixa de preço); ✅ `GET /api/nfts/highlights` → `NftSummary[]`; ✅ `GET /api/nfts/:id` → `Nft`; ✅ `GET /api/nfts/:id/reviews` → `NftReview[]` (somente leitura, fixtures; 404 se o NFT não existe) |
-| Favoritos | `GET /api/favorites`, `PUT /api/favorites/:nftId`, `DELETE /api/favorites/:nftId` |
+| Favoritos | ✅ `GET /api/favorites`, ✅ `PUT /api/favorites/:nftId` (404 se o NFT não existe), ✅ `DELETE /api/favorites/:nftId` → `FavoritesResponse { nftIds, items: NftSummary[], version }`; sempre do usuário da sessão (não há id de usuário na URL); 401 sem sessão |
 | Carrinho | `GET /api/cart`, `POST /api/cart/items`, `PATCH /api/cart/items/:nftId/:editionId`, `DELETE /api/cart/items/:nftId/:editionId`, `POST /api/cart/merge` |
 | Cotação | `POST /api/quotes` `{ couponCode?, network }` → `Quote` (com `fingerprint`) |
 | Pedidos | `POST /api/orders` + header `Idempotency-Key`, `GET /api/orders/:id` |
-| Perfil | `GET/PATCH /api/profile`, `POST /api/profile/password` |
+| Perfil | ✅ `GET /api/profile` → `User`; `PATCH /api/profile`, `POST /api/profile/password` (próxima etapa) |
 | Carteiras | `GET /api/wallets`, `PUT /api/wallets/:slot` (`primary`/`secondary`) |
 
 ### Eventos Socket.IO
@@ -85,7 +88,8 @@ Envelope: `{ eventId, resource: { type, id }, version, occurredAt, data }`.
 
 | Evento | `data` |
 | --- | --- |
-| `nft.updated` | `{ editions: [{ id, priceEth, available }] }` |
+| `nft.updated` (público) | `{ editions: [{ id, priceEth, available }] }` |
+| `favorites.updated` (privado, `resource.id` = id do usuário) | `{ nftIds }` |
 | `order.updated` | `{ status, txHash, rejectionReason }` |
 
 ## 5. Estratégia de dados
@@ -93,7 +97,7 @@ Envelope: `{ eventId, resource: { type, id }, version, occurredAt, data }`.
 - **Cache:** `staleTime` 30 s, `gcTime` 5 min; retry até 2× só para falhas transitórias (rede/5xx), backoff exponencial; mutations sem retry automático.
 - **Respostas obsoletas:** `queryFn` repassa o `AbortSignal` do Query ao Axios; chaves incluem todos os parâmetros, então respostas de parâmetros antigos não sobrescrevem a consulta atual.
 - **Eventos:** descarte por `eventId` já visto (dedupe limitado a 500) e por `version <= versão em cache`. Evento de recurso não cacheado é ignorado (o próximo fetch lê o estado atual).
-- **Reconexão:** ao reconectar, invalida as consultas de NFT para reconciliar eventos perdidos com o REST.
+- **Reconexão:** ao reconectar, invalida as consultas de NFT e as privadas do usuário da sessão para reconciliar eventos perdidos com o REST.
 - **Catálogo e eventos:** `nft.updated` aplica patch versionado no detalhe e **invalida** `nftKeys.collections()` (listas, destaques, facetas). Listas não recebem patch local: preço/estoque podem mudar a pertinência a filtros e a ordenação, que só a API calcula.
 - **Listagem:** `placeholderData: keepPreviousData` mantém a página anterior visível (grade com `aria-busy`) enquanto a próxima carrega; skeleton com shimmer só no primeiro carregamento. Busca com debounce de 300 ms.
 
@@ -115,15 +119,36 @@ A URL é a fonte de verdade (refresh, histórico e links diretos). Exemplo:
 - Quantidade é estado local (não compartilhável), reiniciada a cada edição (`key={edition.id}`). Quando `nft.updated` reduz o limite abaixo da quantidade escolhida, a quantidade é ajustada durante a renderização (não em efeito) e anunciada em `aria-live`.
 - "Mais desta coleção" reutiliza `nftListQuery({ collection })`: está em `nftKeys.collections()` e é invalidada pelo `nft.updated` como as demais listas. Avaliações (`nftKeys.reviews`) só são buscadas quando a aba é aberta.
 
+### Sessão (Etapa 4)
+
+- **Fonte de verdade:** a API simulada. O cliente guarda só o token opaco (`services/api/session-token.ts`, `localStorage`); a sessão é a query `authKeys.session()` → `GET /api/auth/session`. Sem token, a query devolve `null` sem requisição; com token, a API decide (válido → `Session`, expirado/inexistente → 401 → visitante). Refresh e nova aba recuperam a sessão por essa chamada.
+- **Ciclo de vida centralizado** (`features/auth/session.ts`): `startSession` (login/cadastro) e `endSession` (logout/expiração) cancelam e removem **todas** as queries privadas, trocam o token e gravam a sessão no cache. É o único lugar que troca de usuário.
+- **Dados privados:** chaves `['private', userId, …]` (`privateKeys`): favoritos e perfil de um usuário nunca são lidos sob o id de outro e saem do cache como grupo.
+- **Expiração:** sessões têm TTL de 2 h no mock (testes expiram sob demanda em `/api/__mock/sessions/expire`). Um 401 de requisição feita **com o token atual** chama o handler registrado pelo `SessionSync`: encerra a sessão, avisa (toast) e reavalia os guardas (`router.invalidate`). Em rota privada, o guarda leva a `/login?redirect=<url atual>&reason=expired`, e o login devolve o usuário à mesma página; em rota pública, a navegação continua como visitante. Um 401 atrasado de uma sessão anterior (token diferente do atual) é ignorado — não derruba a sessão nova.
+- **Guardas:** `/profile` e `/favorites` usam `beforeLoad: requireSession` (`ensureQueryData` da sessão). `redirect` só aceita caminhos internos (`/…`, sem `//`, `\` ou URL absoluta): sem open redirect. Usuário autenticado em `/login`/`/register` vê "Você está conectado como…" com Continuar, Ver perfil e Sair.
+- **Logout:** `POST /api/auth/logout` (apaga a sessão no servidor) e `endSession`, mesmo se a requisição falhar (dado privado não fica visível por falta de rede). Entrar/sair em outra aba é refletido pelo evento `storage`.
+- **Cache verificável:** com mocks ativos, `window.__jungleQueryKeys()` lista (somente leitura) as chaves com dados — os testes E2E usam para provar que o logout remove os dados privados sem recarregar a página.
+
+### Favoritos (Etapa 4)
+
+- `useToggleFavorite` (TanStack Query): `onMutate` cancela leituras, guarda snapshot e aplica a mudança no cache; sucesso → a resposta da API (com `version`) vira o cache; erro → snapshot restaurado + toast de erro ("A alteração foi desfeita."). Com vários toggles em voo, só o último a terminar grava/refaz a leitura (resposta antiga não sobrescreve estado otimista mais novo).
+- Proteções de sessão: o `mutationFn` falha se o usuário mudou entre o clique e o envio (o token enviado seria de outra pessoa), e callbacks de uma sessão anterior são descartados (não recriam cache privado removido).
+- O botão fica `aria-disabled` até a lista do usuário carregar (estado desconhecido) e durante a requisição (`aria-busy`); visitante vai ao login com `redirect` para a página atual.
+- Catálogo, detalhe e lista de interesse leem a mesma query → sincronizados sem recarregar. `nft.updated` também invalida as listas de favoritos (resumos com preço/estoque).
+
+### Socket.IO por sessão (Etapa 4)
+
+- `RealtimeProvider` recebe `{ resolved, token, userId }` da sessão (composição em `app/App.tsx`) e abre **um socket por sessão** com `auth: { token }` no CONNECT (`forceNew`); visitante conecta sem token. Troca de sessão fecha o socket anterior (listeners, deduper) e abre outro; a reconexão automática reenvia o mesmo `auth`.
+- O mock lê o pacote CONNECT (`40{"token":…}`) — a binding não expõe o `auth` — e associa a conexão ao token. `emitToUser` só entrega a conexões cujo token é, **no momento do envio**, sessão válida do usuário-alvo (logout ou expiração cortam a entrega imediatamente). `nft.updated` continua público.
+- No cliente, `favorites.updated` só é aplicado se `resource.id` for o usuário da sessão do socket e se `version` for maior que a do cache (dedupe por `eventId` mantido).
+
 ### Planejado (próximas etapas)
 
-- **Carrinho:** persistido no backend simulado. Visitante recebe `guest:<uuid>` (localStorage); no login, `POST /api/cart/merge` soma quantidades respeitando `maxPerOrder`/disponibilidade.
-- **Isolamento por usuário:** chaves privadas incluem `userId`; logout/troca de usuário faz `queryClient.removeQueries` das chaves privadas e recria o socket com o token da nova sessão (o mock só entrega eventos privados à conexão autenticada daquele usuário).
-- **Sessão:** token com expiração no mock; 401 `SESSION_EXPIRED` redireciona ao login com `redirect` na URL e preserva o contexto (carrinho/checkout ficam no servidor simulado).
+- **Carrinho:** persistido no backend simulado. Visitante recebe `guest:<uuid>` (localStorage); no login, `POST /api/cart/merge` soma quantidades respeitando `maxPerOrder`/disponibilidade. O merge entra em `startSession` (único ponto de troca de usuário).
 - **Pedidos:** `Idempotency-Key` gerada uma vez por tentativa de checkout e guardada em `sessionStorage`; reenvio após timeout recupera o mesmo pedido; mesma chave com corpo diferente → 409. Pedido `pending` é recuperado após refresh via `GET /api/orders/:id` e por `order.updated`; `confirmed`/`rejected` são terminais.
 - **Cotação:** checkout envia `quoteFingerprint`; se preço/estoque/cupom mudou, API responde 409 `PRICE_CHANGED`/`AVAILABILITY_CONFLICT` com nova cotação e a UI exige nova confirmação.
-- **Atualização otimista:** favoritos (com rollback em falha).
-- **Detalhe → carrinho/favoritos:** Comprar, Favoritar e Carrinho já existem no layout como ações indisponíveis (`aria-disabled`, mensagem em `aria-live` ao acionar, sem simular sucesso). Os pontos de integração são `onUnavailable` em `NftDetailPage`/`PurchasePanel`, que passarão a disparar as mutations; quantidade e edição já são os parâmetros de `POST /api/cart/items`.
+- **Detalhe → carrinho:** Comprar e Carrinho continuam como ações indisponíveis (`aria-disabled`, mensagem em `aria-live`, sem simular sucesso). O ponto de integração é `onUnavailable` em `NftDetailPage`/`PurchasePanel`; quantidade e edição já são os parâmetros de `POST /api/cart/items`.
+- **Perfil:** edição de dados/avatar/senha e carteiras usam a mesma área (`ProfileLayout`) e chaves `privateKeys`.
 
 ## 6. MSW + Socket.IO
 
@@ -135,10 +160,11 @@ A URL é a fonte de verdade (refresh, histórico e links diretos). Exemplo:
 1. **Versões:** `@mswjs/socket.io-binding@0.2.0` (última publicada) exige `msw ^2.10`. O `main` do repositório já tem uma API nova (para MSW 3), **não publicada**. Por isso usamos **MSW 2.15**, não 3.x.
 2. **Ordem de import:** `engine.io-client` captura `globalThis.WebSocket` ao ser importado (`transports/websocket.js`). A app usa uma transport própria (`services/realtime/socket.ts`) que resolve o `WebSocket` na conexão; assim MSW e app baixam em paralelo e a renderização só ocorre após `worker.start()` (`main.tsx`). Sem essa transport o socket tenta a rede real (verificado por teste de mutação).
 3. **Heartbeat:** a binding simula o handshake (`pingInterval` 25 s, `pingTimeout` 5 s) mas não envia pings. Sem correção, o cliente cai por "ping timeout" aos 30 s e reconecta (comprovado por teste). O mock envia ping Engine.IO a cada 20 s.
-4. **Recursos da binding:** apenas namespace padrão e eventos de texto; sem acks, rooms ou binários. Isolamento por usuário será feito no mock associando cada conexão ao token enviado no `CONNECT`.
-5. **Banco do mock (schema 5):** a Etapa 3 acrescentou campos ao `Nft` e edições do Figma. `db.ts` migra o estado v4 salvo no `localStorage`: campos novos vêm do seed e as alterações já feitas no "backend" (preço, estoque e versão das edições existentes) são preservadas.
-6. **StrictMode (dev):** socket fechado durante o handshake não dispara `close` no interceptor; o mock poda conexões com `readyState CLOSED`.
-7. O transporte é in-page: não aparece como WebSocket real no DevTools/Playwright.
+4. **Recursos da binding:** apenas namespace padrão e eventos de texto; sem acks, rooms ou binários. A binding responde ao CONNECT sozinha e não expõe o `auth`; o mock lê o frame CONNECT do cliente para associar a conexão ao token (eventos privados só são roteados depois disso, em milissegundos).
+5. **Banco do mock (schema 6):** a Etapa 3 acrescentou campos ao `Nft` e edições do Figma (v4 → v5: campos novos do seed, preço/estoque/versão persistidos preservados); a Etapa 4 acrescentou usuários, sessões e favoritos por usuário (v5 → v6: catálogo persistido mantido, contas do seed adicionadas). Migrações encadeadas em `db.ts`.
+6. **Autenticação simulada (não é segurança real):** tudo roda no navegador — o "servidor" é código da página e o `localStorage` é acessível ao usuário. Senhas são guardadas como SHA-256 com salt por usuário (nunca em claro; produção usaria KDF lento no servidor), o token é um UUID opaco em `localStorage` (produção: cookie `HttpOnly`/`Secure`/`SameSite`), sem rate limit nem recuperação de senha. O objetivo é exercitar contratos, estados e isolamento, não proteger dados.
+7. **StrictMode (dev):** socket fechado durante o handshake não dispara `close` no interceptor; o mock poda conexões com `readyState CLOSED`.
+8. O transporte é in-page: não aparece como WebSocket real no DevTools/Playwright.
 
 ## 7. Requisitos — interpretação e riscos
 
@@ -161,7 +187,8 @@ A URL é a fonte de verdade (refresh, histórico e links diretos). Exemplo:
   - Desvios do detalhe: (1) miniaturas também no mobile (abaixo da imagem; o frame mobile mostra só uma imagem) para a galeria ser operável por toque e teclado; (2) carrossel "Mais desta coleção" com botões anterior/próximo e rolagem horizontal em vez dos pontos do Figma; (3) "Criador" adicionado às informações; (4) os rótulos "Contrato"/"Direitos autorais" do Figma aparecem trocados em relação ao conteúdo — aqui "Contrato" mostra endereço e padrão, "Direitos autorais" o percentual; (5) aviso visível "Indisponível nesta versão" sob os botões de compra; (6) total (preço × quantidade) exibido também no desktop; (7) ícones de LinkedIn/X como texto ("in", "X") — o lucide não traz marcas; compartilhar nativo (Web Share API) e "Copiar link" adicionados.
   - Acessibilidade: galeria no padrão WAI-ARIA de carrossel com abas (Radix Tabs: setas, Home/End), zoom em diálogo com foco preso e devolvido ao fechar, edições como rádios nativos (esgotadas desabilitadas e riscadas — não só por cor), quantidade com `aria-disabled` (o foco não se perde no limite), anúncios `aria-live` para tempo real, ajuste de estoque, ações indisponíveis e cópia de link.
   - Artes: 8 placeholders SVG próprios (`public/images/nfts/art-01..08.svg`, paleta + acessório), 4 por NFT, distintos dentro de cada coleção; imagem que falha ao carregar cai para `placeholder-nft.svg`.
-- Desvios conhecidos: (1) busca no topo da coluna do catálogo no desktop (o Figma mostra só um ícone no header); (2) "Somente disponíveis" e "Limpar filtros" adicionados à sidebar; (3) "Oferta limitada" → "Edição limitada" (a API não tem promoções); (4) ainda não implementados: banners promocionais e "Diário da Cunhagem" (editorial, fora do escopo do README), preço "de/por", coração de favoritar nos cards, botão central da bottom nav, contador do carrinho; (5) ações de etapas futuras (Entrar, Carrinho, Favoritos, Perfil), newsletter e páginas fora do escopo (Criadores, Aprenda, ajuda, redes sociais) aparecem desabilitadas ou como texto, sem simular sucesso; (6) **artes dos NFTs são placeholders** (variações SVG geradas, ver acima) — os assets originais não estão disponíveis (as capturas não podem ser recortadas como asset); (7) no mobile, nome/preço ficam dentro da caixa do card (no Figma ficam abaixo dela).
+- **Conta (Etapa 4):** login e cadastro seguem os cartões do Figma (mobile-05/06; desktop-06/07 com abas "Entrar | Criar conta"), mas como **páginas** (`/login`, `/register`) e não modal sobre a Início — link direto, `redirect` e botão voltar funcionam. Rótulos visíveis acima dos campos (o Figma só tem placeholder). Login social e "Esqueceu a senha?" visíveis como indisponíveis (fora do escopo). O cadastro usa "Nome de usuário" como no Figma; o nome de exibição começa igual a ele. Perfil (desktop-08) somente leitura nesta etapa; o menu mostra Dados do perfil, Carteiras (indisponível), Lista de interesse e Sair — Atividade, Ofertas, Arquivos baixados e Suporte estão fora do escopo do README e foram omitidos. Coração nos cards (Figma mobile-01) também no desktop; selo "Esgotado" movido para o canto inferior. Toasts: topo no desktop, base no mobile (acima da navegação) e nunca bloqueiam toques.
+- Desvios conhecidos: (1) busca no topo da coluna do catálogo no desktop (o Figma mostra só um ícone no header); (2) "Somente disponíveis" e "Limpar filtros" adicionados à sidebar; (3) "Oferta limitada" → "Edição limitada" (a API não tem promoções); (4) ainda não implementados: banners promocionais e "Diário da Cunhagem" (editorial, fora do escopo do README), preço "de/por", botão central da bottom nav, contador do carrinho; (5) ações de etapas futuras (Carrinho, Compra, Carteiras), newsletter e páginas fora do escopo (Criadores, Aprenda, ajuda, redes sociais) aparecem desabilitadas ou como texto, sem simular sucesso; (6) **artes dos NFTs são placeholders** (variações SVG geradas, ver acima) — os assets originais não estão disponíveis (as capturas não podem ser recortadas como asset); (7) no mobile, nome/preço ficam dentro da caixa do card (no Figma ficam abaixo dela).
 
 ## 9. Qualidade (evidências)
 
@@ -173,7 +200,12 @@ A URL é a fonte de verdade (refresh, histórico e links diretos). Exemplo:
   - Testado e mantido: entry mínimo + download paralelo de MSW e app (transport Socket.IO com `WebSocket` resolvido na conexão) — dados prontos em 412 ms vs 535 ms no trace sem throttling; sem ganho mensurável no Lighthouse simulado (limitado por banda).
   - Testado e revertido: rota inicial sem code splitting — home sem ganho e detalhe pior (Perf 82, LCP 3,8 s).
   - Próximas correções recomendadas, por impacto estimado: (1) remover o cookie store do MSW do bundle (alias de `tough-cookie` para um stub mínimo — ~60–70 KB gzip; exige validar que nenhum fluxo usa cookies na simulação); (2) reavaliar MSW 3 quando `@mswjs/socket.io-binding` publicar a versão compatível; (3) medir em ambiente controlado (CI/máquina ociosa) para reduzir a variância do TBT.
-- **E2E intermitente (`Failed to fetch`)**: 3 ocorrências em ~650 execuções em `POST /api/__mock/nfts/:id/editions/:ed`; na máquina atual (Etapa 3) também apareceu em `POST /api/__mock/scenario` (2 em ~460) (endpoint de controle dos testes), com o Service Worker controlando a página e ativo; inclusive em alteração `silent` (sem emissão Socket.IO) — o emit não é a causa. O worker rejeita a resposta (`net::ERR_FAILED`) sem log de exceção do handler; causa provável no transporte worker↔página do MSW sob carga paralela. Sem retry (não mascarar). O helper `mockControl` agora anexa o estado do SW ao erro. Próximo passo: capturar o console do próprio Service Worker via CDP numa execução de stress (`--repeat-each`).
+- **E2E intermitente (`Failed to fetch`) — causa confirmada (Etapa 4):** ocorrências em `POST /api/__mock/nfts/:id/editions/:ed` e `POST /api/__mock/scenario` (Etapas 2–3) e em `POST /api/auth/login` (Etapa 4: o teste fica em `/login` porque o login recebeu erro de rede). Taxa observada: ~1 a cada 300–600 execuções sob carga; sempre em **requisições com corpo (POST)**, nunca em GET.
+  - **Onde:** no Service Worker do MSW 2.15 (`public/mockServiceWorker.js`), antes de a requisição chegar ao handler. `serializeRequest` faz `await request.arrayBuffer()` no corpo da requisição; ocasionalmente o Chromium falha ao ler esse corpo (`TypeError: Failed to fetch`, `bodyUsed=true`), `handleRequest` rejeita, o `respondWith` é rejeitado e a página recebe `net::ERR_FAILED` em ~30 ms (o handler simulado nem chega a rodar).
+  - **Evidência:** console do próprio Service Worker capturado via CDP, com uma cópia instrumentada do worker servida só ao navegador do diagnóstico (o arquivo do projeto não foi alterado): `[diag] request.arrayBuffer failed POST /api/auth/login bodyUsed=true TypeError: Failed to fetch` → `[diag] handleRequest rejected …` → `The FetchEvent for "/api/auth/login" resulted in a network error response: the promise was rejected.` Os ramos de repasse (sem cliente, cliente inativo, `PASSTHROUGH`, falha do `fetch` de repasse) foram instrumentados e não ocorreram.
+  - **Gatilho:** vários navegadores em paralelo (cada worker do Playwright é um processo de navegador). Com um navegador: 0 falhas em 2.160 tentativas (1.920 requisições em contextos estáveis + 240 contextos novos); com 4 navegadores: 1–4 falhas a cada 600 contextos novos; suíte com 6 workers: 1 falha em 192.
+  - **Não é** corrida na aplicação, timeout de lentidão nem interferência entre testes (cada contexto tem banco simulado e worker próprios). A aplicação trata o caso corretamente (erro de conexão, nova tentativa possível).
+  - **Decisão:** sem retry nos testes nem patch no worker gerado (seria sobrescrito por `msw init` e mascararia o problema). Mitigações: `retries: 1` já previsto no CI (`process.env.CI`); localmente, menos workers reduzem a chance (suíte completa: 158/158 com 4 e com 2 workers na investigação). Candidato a reporte ao MSW com essa evidência. O helper `mockControl` continua anexando o estado do SW ao erro.
 - **Corrida corrigida (Etapa 2, revisão):** evento `nft.updated` chegando com a resposta REST ainda em trânsito era descartado e a tela ficava com a versão antiga. Agora a consulta é cancelada e refeita (`cancelQueries` + `invalidateQueries`; `invalidate` sozinho reaproveita a busca inicial em andamento). Coberto por teste determinístico (cenário `slow`), que falhava antes da correção. Os handlers do mock passaram a ler o store **antes** da latência, como um servidor real.
 
 - **Máquina atual (Ryzen 7 5700U, 7,4 GB RAM, ~1,6 GB livres):** com o padrão de 8 workers, testes do catálogo excedem o timeout de 5 s ao carregar (página renderizada, catálogo ainda carregando). Com `--workers=4` a suíte passa; falhas isoladas do mesmo tipo ainda ocorrem sob carga (1 em ~200 execuções na Etapa 3; o mesmo spec passou 128/128 em seguida). A configuração do Playwright não foi alterada.
@@ -185,10 +217,10 @@ Hoje aparecem desabilitadas (sem simular sucesso). Todas usam contratos já defi
 | Área | Pendente | Dependências |
 | --- | --- | --- |
 | Detalhe do NFT | ✅ Etapa 3 (layout, galeria, edições na URL, quantidade/estoque, avaliações, compartilhamento). Falta ligar Comprar/Favoritar/Carrinho às mutations | Login, Carrinho |
-| Login / Cadastro | Sessão (`/api/auth/*`), validação, conflito de e-mail, retorno ao fluxo anterior, expiração | Base para as demais |
-| Favoritos | Coração no card e no detalhe, `PUT/DELETE /api/favorites/:id`, **atualização otimista com rollback** (requisito do README), persistência por usuário | Login |
+| Login / Cadastro | ✅ Etapa 4 (sessão na API, validação, conflito de e-mail/usuário, retorno ao fluxo anterior, expiração). Fora do escopo: login social e recuperação de senha (visíveis como indisponíveis) | — |
+| Favoritos | ✅ Etapa 4 (card, detalhe, lista de interesse, otimista com rollback, por usuário, sincronizado via Socket.IO) | — |
 | Carrinho | Itens por edição, quantidades vs disponibilidade, cupom, resumo, persistência após refresh, mesclagem visitante→login, contador no header/bottom nav, reação a `nft.updated` | Login (mesclagem) |
 | Pagamento e confirmação | Cotação com `fingerprint`, carteiras/rede, idempotência, pendente/confirmado/recusado, `order.updated`, recibo como snapshot | Carrinho, Carteiras |
-| Perfil / Carteiras | Edição de dados, avatar, senha; carteira principal/secundária | Login |
-| Sessão e tempo real | Socket por sessão (eventos privados não cruzam usuários), limpeza de cache no logout/troca | Login |
+| Perfil / Carteiras | Perfil somente leitura ✅ (Etapa 4); falta edição de dados, avatar, senha e carteiras principal/secundária | — |
+| Sessão e tempo real | ✅ Etapa 4 (socket por sessão, eventos privados por usuário, limpeza de cache no logout/troca). `order.updated` privado: etapa de pedidos | — |
 | Lighthouse oficial | 3 medições × 2 páginas × 2 perfis com relatórios versionados, em ambiente controlado | — |

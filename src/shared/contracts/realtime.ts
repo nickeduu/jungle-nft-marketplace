@@ -20,6 +20,12 @@ export type NftUpdatedEvent = RealtimeEvent<
   { editions: Array<Pick<NftEdition, 'id' | 'priceEth' | 'available'>> }
 >
 
+/**
+ * Private: delivered only to the Socket.IO connections authenticated as `resource.id` (user id),
+ * e.g. favorites changed on another device. Clients also drop it when the id is not theirs.
+ */
+export type FavoritesUpdatedEvent = RealtimeEvent<'favorites', { nftIds: string[] }>
+
 export type OrderUpdatedEvent = RealtimeEvent<
   'order',
   { status: OrderStatus; txHash: string | null; rejectionReason: string | null }
@@ -28,13 +34,23 @@ export type OrderUpdatedEvent = RealtimeEvent<
 /** Server → client events. */
 export interface ServerToClientEvents {
   'nft.updated': (event: NftUpdatedEvent) => void
+  'favorites.updated': (event: FavoritesUpdatedEvent) => void
   'order.updated': (event: OrderUpdatedEvent) => void
 }
 
 /** Client → server events (none yet; subscriptions are implicit per session). */
 export type ClientToServerEvents = Record<never, never>
 
+/**
+ * Socket.IO handshake `auth` payload. With a valid session token the connection receives the
+ * user's private events; without one (visitor) only public events (`nft.updated`).
+ */
+export interface RealtimeAuth {
+  token: string | null
+}
+
 export const REALTIME_EVENTS = {
   nftUpdated: 'nft.updated',
+  favoritesUpdated: 'favorites.updated',
   orderUpdated: 'order.updated',
 } as const satisfies Record<string, keyof ServerToClientEvents>

@@ -238,7 +238,8 @@ test.describe('Detalhe do NFT: carregamento, falhas e ações', () => {
     await expect(page.getByText('Não há outros NFTs desta coleção no momento.')).toBeVisible()
   })
 
-  test('Comprar, Favoritar e Carrinho informam indisponibilidade sem simular sucesso', async ({ page }) => {
+  // Etapa 4: favorites became a real feature (visitor → login → back); buy/cart stay unavailable.
+  test('Comprar e Carrinho informam indisponibilidade; Favoritar leva o visitante ao login', async ({ page }) => {
     await openDetail(page, EMERALD)
     const notice = page.getByTestId('action-notice')
 
@@ -247,15 +248,15 @@ test.describe('Detalhe do NFT: carregamento, falhas e ações', () => {
     await buy.click({ force: true })
     await expect(notice).toHaveText('Compra indisponível nesta versão: requer login e carrinho.')
 
-    await page.getByRole('button', { name: 'Favoritar' }).click({ force: true })
-    await expect(notice).toHaveText('Favoritos indisponíveis nesta versão: requer login.')
-
     if (isMobile(page)) {
       await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click({ force: true })
       await expect(notice).toHaveText('Carrinho indisponível nesta versão.')
     }
     await expect(page).toHaveURL(/\/nfts\/nft-001/)
     await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Favoritar Emerald Ape #042' }).click()
+    await expect(page).toHaveURL(/\/login\?redirect=%2Fnfts%2Fnft-001/)
   })
 
   test('"Mais desta coleção" lista a coleção sem o NFT atual e navega', async ({ page }) => {

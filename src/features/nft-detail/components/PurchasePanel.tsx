@@ -1,6 +1,7 @@
-import { Heart, Minus, Plus, ShoppingCart } from 'lucide-react'
+import { Minus, Plus, ShoppingCart } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import { FavoriteButton } from '@/features/favorites/components/FavoriteButton'
 import type { NftEdition } from '@/shared/contracts'
 import { formatEth, multiplyEth } from '@/shared/lib/eth'
 import { cn } from '@/shared/lib/utils'
@@ -20,10 +21,14 @@ const unavailableClass = 'aria-disabled:cursor-not-allowed aria-disabled:opacity
  * below the chosen quantity, the quantity is adjusted and the change announced.
  */
 export function PurchasePanel({
+  nftId,
+  nftName,
   edition,
   actionNotice,
   onUnavailable,
 }: {
+  nftId: string
+  nftName: string
   edition: NftEdition
   actionNotice: { message: string; id: number } | null
   onUnavailable: (action: UnavailableAction) => void
@@ -117,16 +122,8 @@ export function PurchasePanel({
           >
             Comprar<span className="md:hidden"> NFT</span>
           </Button>
-          <Button
-            variant="outline"
-            aria-disabled="true"
-            aria-describedby={hintId}
-            onClick={() => onUnavailable('favorite')}
-            className={cn('hidden border-primary/70 bg-transparent text-xs md:inline-flex', unavailableClass)}
-          >
-            <Heart aria-hidden="true" />
-            Favoritar
-          </Button>
+          {/* Mobile: the favorite toggle is in the page header (Figma mobile-02). */}
+          <FavoriteButton nftId={nftId} nftName={nftName} variant="labeled" className="hidden md:inline-flex" />
           <Button
             variant="ghost"
             size="icon-lg"

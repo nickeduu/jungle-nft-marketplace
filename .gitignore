@@ -30,6 +30,9 @@ blob-report/
 playwright/.cache/
 lighthouse-reports/
 
+# TanStack Router generator temp files
+.tanstack/
+
 # Env overrides (never commit secrets)
 .env.local
 .env.*.local

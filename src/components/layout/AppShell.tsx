@@ -1,6 +1,7 @@
-import { Link, useRouterState } from '@tanstack/react-router'
+import { Link, useLocation, useRouterState } from '@tanstack/react-router'
 import { Heart, House, LogIn, Search, ShoppingCart, User } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useSession } from '@/features/auth/session'
 import { useRealtimeStatus } from '@/services/realtime/RealtimeProvider'
 import { cn } from '@/shared/lib/utils'
 import { SiteFooter } from './SiteFooter'
@@ -96,23 +97,56 @@ function DesktopHeader() {
             <ShoppingCart className="size-4" aria-hidden="true" />
             <span className="sr-only">Carrinho (indisponível nesta versão)</span>
           </span>
-          <span
-            aria-disabled="true"
-            title={UNAVAILABLE}
-            className="inline-flex items-center gap-1.5 rounded-md border border-primary/60 px-2.5 py-1 text-xs text-primary/70"
-          >
-            <LogIn className="size-3.5" aria-hidden="true" />
-            Entrar
-          </span>
+          <AccountControls />
         </div>
       </div>
     </header>
   )
 }
 
+/**
+ * Visitor: "Entrar" (returns to the current page after login). Signed in: favorites and profile.
+ * While a stored token is being validated, a placeholder keeps the layout (no "Entrar" flash).
+ */
+function AccountControls() {
+  const { user, isPending } = useSession()
+  const location = useLocation()
+  if (isPending) return <span aria-hidden="true" className="h-7 w-20 rounded-md bg-muted" />
+  if (!user) {
+    const onAuthPage = location.pathname === '/login' || location.pathname === '/register'
+    return (
+      <Link
+        to="/login"
+        search={{ redirect: onAuthPage ? undefined : location.href, reason: undefined }}
+        className="inline-flex items-center gap-1.5 rounded-md border border-primary/60 px-2.5 py-1 text-xs text-primary hover:bg-primary/10"
+      >
+        <LogIn className="size-3.5" aria-hidden="true" />
+        Entrar
+      </Link>
+    )
+  }
+  return (
+    <>
+      <Link to="/favorites" aria-label="Lista de interesse" className="text-foreground hover:text-primary data-[status=active]:text-primary">
+        <Heart className="size-4" aria-hidden="true" />
+      </Link>
+      <Link
+        to="/profile"
+        className="inline-flex max-w-40 items-center gap-1.5 rounded-md border border-primary/60 px-2.5 py-1 text-xs text-primary hover:bg-primary/10"
+        data-testid="account-link"
+      >
+        <User className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="truncate">{user.name.split(' ')[0]}</span>
+        <span className="sr-only"> — meu perfil</span>
+      </Link>
+    </>
+  )
+}
+
 /** Figma mobile: icons only (labels stay available to assistive technology). */
 function MobileNav() {
   const disabledItem = 'grid size-11 place-items-center text-muted-foreground/70'
+  const activeItem = 'grid size-11 place-items-center text-foreground data-[status=active]:text-primary'
   return (
     <nav
       aria-label="Navegação inferior"
@@ -129,17 +163,22 @@ function MobileNav() {
             <span className="sr-only">Início</span>
           </Link>
         </li>
-        <li aria-disabled="true" title={UNAVAILABLE} className={disabledItem}>
-          <Heart className="size-5" aria-hidden="true" />
-          <span className="sr-only">Favoritos (indisponível nesta versão)</span>
+        <li>
+          <Link to="/favorites" className={activeItem}>
+            <Heart className="size-5" aria-hidden="true" />
+            <span className="sr-only">Lista de interesse</span>
+          </Link>
         </li>
         <li aria-disabled="true" title={UNAVAILABLE} className={disabledItem}>
           <ShoppingCart className="size-5" aria-hidden="true" />
           <span className="sr-only">Carrinho (indisponível nesta versão)</span>
         </li>
-        <li aria-disabled="true" title={UNAVAILABLE} className={disabledItem}>
-          <User className="size-5" aria-hidden="true" />
-          <span className="sr-only">Perfil (indisponível nesta versão)</span>
+        <li>
+          {/* Private route: visitors are redirected to the login and come back here. */}
+          <Link to="/profile" className={activeItem}>
+            <User className="size-5" aria-hidden="true" />
+            <span className="sr-only">Perfil</span>
+          </Link>
         </li>
       </ul>
     </nav>

@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { nftKeys } from '@/shared/query-keys'
-import type { Nft, NftUpdatedEvent } from '@/shared/contracts'
+import { nftKeys, privateKeys } from '@/shared/query-keys'
+import type { FavoritesResponse, FavoritesUpdatedEvent, Nft, NftUpdatedEvent } from '@/shared/contracts'
 
 /** Remembers recently applied event ids to ignore duplicates (bounded memory). */
 export class EventDeduper {
@@ -66,5 +66,22 @@ export function applyNftUpdated(queryClient: QueryClient, event: NftUpdatedEvent
 export async function invalidateNftLists(queryClient: QueryClient) {
   // Same race as the detail: a first load in flight may predate the event (see above).
   await queryClient.cancelQueries({ queryKey: nftKeys.collections() })
-  return queryClient.invalidateQueries({ queryKey: nftKeys.collections() })
+  await queryClient.invalidateQueries({ queryKey: nftKeys.collections() })
+  // Favorites lists carry NFT summaries (price/stock) too.
+  return queryClient.invalidateQueries({ queryKey: privateKeys.all, predicate: (query) => query.queryKey[2] === 'favorites' })
+}
+
+/**
+ * Private `favorites.updated` (another device of the same user). Applied only when the event
+ * belongs to the user of this socket's session — the mock never routes it elsewhere, and the
+ * client double-checks — and only when newer than the cached list. The list is refetched
+ * (it also carries the NFT summaries), never patched from the event.
+ */
+export function applyFavoritesUpdated(queryClient: QueryClient, event: FavoritesUpdatedEvent, sessionUserId: string | null) {
+  if (!sessionUserId || event.resource.type !== 'favorites' || event.resource.id !== sessionUserId) return false
+  const queryKey = privateKeys.favorites(sessionUserId)
+  const cached = queryClient.getQueryData<FavoritesResponse>(queryKey)
+  if (cached && event.version <= cached.version) return false
+  void queryClient.invalidateQueries({ queryKey, exact: true })
+  return true
 }

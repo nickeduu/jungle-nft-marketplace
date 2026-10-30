@@ -5,7 +5,7 @@ import type { ApiErrorBody, ApiErrorCode } from '@/shared/contracts'
  * Network/failure scenarios, selected by `?scenario=<name>` (persisted in localStorage)
  * so dev, demo build and Playwright share the exact same, reproducible behavior.
  */
-export type ScenarioName = 'default' | 'slow' | 'server-error' | 'offline' | 'empty' | 'out-of-order'
+export type ScenarioName = 'default' | 'slow' | 'server-error' | 'offline' | 'empty' | 'out-of-order' | 'favorites-error'
 
 interface Scenario {
   /** Fixed latency (ms) — deterministic. */
@@ -15,8 +15,9 @@ interface Scenario {
    * [2000, 100] makes each odd call slower than the next one: responses arrive out of order.
    */
   latencySequenceMs?: number[]
-  /** Forces this outcome on every non-control endpoint. */
+  /** Forces this outcome on every non-control endpoint (or only on `failingEndpoints`). */
   failure?: 'http-500' | 'network'
+  failingEndpoints?: string[]
   /** List endpoints return no results. */
   emptyLists?: boolean
 }
@@ -28,6 +29,8 @@ const SCENARIOS: Record<ScenarioName, Scenario> = {
   offline: { latencyMs: 0, failure: 'network' },
   empty: { latencyMs: 150, emptyLists: true },
   'out-of-order': { latencyMs: 150, latencySequenceMs: [2000, 100] },
+  // Favorite add/remove fail with 500 after a visible delay (optimistic update + rollback).
+  'favorites-error': { latencyMs: 800, failure: 'http-500', failingEndpoints: ['favorite-write'] },
 }
 
 /** Call counters per endpoint (in memory: reset on reload, like a fresh server connection). */
@@ -74,7 +77,8 @@ export async function applyScenario(endpoint: string): Promise<Response | undefi
   const sequence = scenario.latencySequenceMs
   const latency = sequence?.length ? (sequence[call % sequence.length] ?? scenario.latencyMs) : scenario.latencyMs
   if (latency > 0) await delay(latency)
-  if (scenario.failure === 'network') return HttpResponse.error()
-  if (scenario.failure === 'http-500') return errorResponse(500, 'TRANSIENT_FAILURE', 'Serviço temporariamente indisponível.')
+  const fails = !scenario.failingEndpoints || scenario.failingEndpoints.includes(endpoint)
+  if (fails && scenario.failure === 'network') return HttpResponse.error()
+  if (fails && scenario.failure === 'http-500') return errorResponse(500, 'TRANSIENT_FAILURE', 'Serviço temporariamente indisponível.')
   return undefined
 }

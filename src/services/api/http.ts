@@ -1,5 +1,6 @@
 import axios, { isAxiosError } from 'axios'
 import type { ApiErrorBody, ApiErrorCode } from '@/shared/contracts'
+import { sessionToken } from './session-token'
 
 /** Single Axios instance for every REST call. MSW intercepts it at the network layer. */
 export const http = axios.create({
@@ -52,4 +53,29 @@ export function toApiError(error: unknown): ApiError {
   return new ApiError('UNKNOWN', 'Erro inesperado.', null)
 }
 
-http.interceptors.response.use(undefined, (error: unknown) => Promise.reject(toApiError(error)))
+/** Authenticated requests carry the session token; the API resolves the user from it. */
+http.interceptors.request.use((config) => {
+  const token = sessionToken.get()
+  if (token) config.headers.set('Authorization', `Bearer ${token}`)
+  return config
+})
+
+type UnauthorizedHandler = (info: { token: string; code: ApiErrorKind }) => void
+let onUnauthorized: UnauthorizedHandler | null = null
+
+/** Registered by the session layer: called when the API rejects the token a request was sent with. */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  onUnauthorized = handler
+}
+
+http.interceptors.response.use(undefined, (error: unknown) => {
+  const apiError = toApiError(error)
+  if (apiError.status === 401 && isAxiosError(error)) {
+    const sent = String(error.config?.headers?.get?.('Authorization') ?? '')
+    const token = sent.startsWith('Bearer ') ? sent.slice('Bearer '.length) : null
+    // A late 401 for a previous session (e.g. after logout + login as someone else) is ignored:
+    // only a rejection of the current token ends the session.
+    if (token && token === sessionToken.get()) onUnauthorized?.({ token, code: apiError.code })
+  }
+  return Promise.reject(apiError)
+})

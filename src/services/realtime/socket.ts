@@ -1,5 +1,5 @@
 import { io, WebSocket as WebSocketTransport, type Socket } from 'socket.io-client'
-import type { ClientToServerEvents, ServerToClientEvents } from '@/shared/contracts'
+import type { ClientToServerEvents, RealtimeAuth, ServerToClientEvents } from '@/shared/contracts'
 
 export type RealtimeSocket = Socket<ServerToClientEvents, ClientToServerEvents>
 
@@ -18,10 +18,15 @@ class LateBoundWebSocketTransport extends WebSocketTransport {
 /**
  * Creates the Socket.IO client. WebSocket-only transport: the mock layer
  * (MSW + @mswjs/socket.io-binding) intercepts WebSocket, not HTTP long-polling.
+ * `auth` goes in the CONNECT packet (and again on every automatic reconnection), binding the
+ * connection to the session — not in the URL, where tokens end up in logs.
  * The caller owns the lifecycle (connect/disconnect).
  */
-export function createRealtimeSocket(): RealtimeSocket {
+export function createRealtimeSocket(auth: RealtimeAuth): RealtimeSocket {
   return io(import.meta.env.VITE_SOCKET_URL, {
+    auth: { ...auth },
+    // A new Manager per session: never reuse a connection authenticated as someone else.
+    forceNew: true,
     transports: [LateBoundWebSocketTransport],
     autoConnect: false,
     reconnectionDelay: 500,

@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/button'
+import { SessionSync } from '@/features/auth/SessionSync'
 
 export interface RouterContext {
   queryClient: QueryClient
@@ -10,6 +11,7 @@ export interface RouterContext {
 export const Route = createRootRouteWithContext<RouterContext>()({
   component: () => (
     <AppShell>
+      <SessionSync />
       <Outlet />
     </AppShell>
   ),

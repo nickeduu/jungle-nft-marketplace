@@ -1,9 +1,10 @@
 import { http, HttpResponse } from 'msw'
 import { setActiveScenario, errorResponse, type ScenarioName } from '@/mocks/scenarios'
-import { buildNftUpdatedEvent, connectionCount, disconnectAll, emitToAll } from '@/mocks/socket/server'
-import { nftsTable, resetDb } from '@/mocks/store/db'
-import type { NftUpdatedEvent } from '@/shared/contracts'
+import { buildNftUpdatedEvent, connectionCount, describeConnections, disconnectAll, emitToAll } from '@/mocks/socket/server'
+import { nftsTable, resetDb, sessionsTable, usersTable } from '@/mocks/store/db'
+import type { ServerToClientEvents } from '@/shared/contracts'
 import { isEthDecimal } from '@/shared/lib/eth'
+import { changeFavorite } from './favorites'
 
 /**
  * Mock-only "backoffice" endpoints (prefix /api/__mock). They play the role of
@@ -48,11 +49,34 @@ export const controlHandlers = [
     },
   ),
 
-  /** Re-emits an arbitrary event as-is (duplicate/stale delivery scenarios). */
-  http.post<never, { event: 'nft.updated'; payload: NftUpdatedEvent }>(`${base}/socket/emit`, async ({ request }) => {
+  /**
+   * Re-emits an arbitrary event as-is to EVERY connection (duplicate/stale delivery, and a
+   * private event delivered to the wrong session: the client must still drop it).
+   */
+  http.post<never, { event: keyof ServerToClientEvents; payload: never }>(`${base}/socket/emit`, async ({ request }) => {
     const { event, payload } = await request.json()
     emitToAll(event, payload)
     return HttpResponse.json({ deliveredTo: connectionCount() })
+  }),
+
+  /** Which user each open Socket.IO connection is bound to (null = visitor). */
+  http.post(`${base}/socket/connections`, () => HttpResponse.json({ connections: describeConnections() })),
+
+  /** Expires every session, or only the sessions of `email` (session expiry scenarios). */
+  http.post<never, { email?: string }>(`${base}/sessions/expire`, async ({ request }) => {
+    const { email } = await request.json().catch(() => ({ email: undefined }))
+    const user = email ? usersTable.findByEmail(email) : undefined
+    if (email && !user) return errorResponse(404, 'NOT_FOUND', 'Usuário não encontrado.')
+    return HttpResponse.json({ expired: sessionsTable.expire(user?.id) })
+  }),
+
+  /** Changes a user's favorites as if from another device: store + private `favorites.updated`. */
+  http.post<never, { email: string; nftId: string; favorite: boolean }>(`${base}/favorites`, async ({ request }) => {
+    const { email, nftId, favorite } = await request.json()
+    const user = usersTable.findByEmail(email)
+    if (!user) return errorResponse(404, 'NOT_FOUND', 'Usuário não encontrado.')
+    if (!nftsTable.findById(nftId)) return errorResponse(404, 'NOT_FOUND', 'NFT não encontrado.')
+    return HttpResponse.json(changeFavorite(user.id, nftId, favorite))
   }),
 
   http.post(`${base}/socket/disconnect`, () => {

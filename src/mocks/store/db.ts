@@ -1,5 +1,6 @@
 import { nftFixtures } from '@/mocks/fixtures/nfts'
-import type { Nft } from '@/shared/contracts'
+import { favoriteFixtures, userFixtures, type UserRecord } from '@/mocks/fixtures/users'
+import type { Nft, User } from '@/shared/contracts'
 
 /**
  * Single source of truth for the simulated backend.
@@ -8,10 +9,37 @@ import type { Nft } from '@/shared/contracts'
  *
  * Persisted in localStorage to survive refresh; `resetDb()` restores the seed exactly.
  */
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
+
+/** Session lifetime. Tests expire sessions on demand through the control endpoints. */
+export const SESSION_TTL_MS = 2 * 60 * 60 * 1000
+
+export interface SessionRecord {
+  token: string
+  userId: string
+  createdAt: string
+  expiresAt: string
+}
+
+interface FavoritesRecord {
+  /** Most recent first. */
+  nftIds: string[]
+  version: number
+}
 
 interface DbState {
   schemaVersion: typeof SCHEMA_VERSION
+  nfts: Record<string, Nft>
+  users: Record<string, UserRecord>
+  /** By token. */
+  sessions: Record<string, SessionRecord>
+  /** By user id: each user's list is a separate record. */
+  favorites: Record<string, FavoritesRecord>
+}
+
+/** v5: NFT catalog only (no accounts). */
+interface DbStateV5 {
+  schemaVersion: 5
   nfts: Record<string, Nft>
 }
 
@@ -27,6 +55,11 @@ function seed(): DbState {
   return {
     schemaVersion: SCHEMA_VERSION,
     nfts: Object.fromEntries(nftFixtures.map((nft) => [nft.id, structuredClone(nft)])),
+    users: Object.fromEntries(userFixtures.map((user) => [user.id, structuredClone(user)])),
+    sessions: {},
+    favorites: Object.fromEntries(
+      Object.entries(favoriteFixtures).map(([userId, nftIds]) => [userId, { nftIds: [...nftIds], version: 1 }]),
+    ),
   }
 }
 
@@ -34,9 +67,9 @@ function seed(): DbState {
  * v4 → v5: new descriptive fields and editions come from the seed; the simulated
  * "backend" changes already persisted (price, stock and version of existing editions) are kept.
  */
-function migrateFromV4(previous: DbStateV4): DbState {
-  const next = seed()
-  for (const nft of Object.values(next.nfts)) {
+function migrateFromV4(previous: DbStateV4): DbStateV5 {
+  const nfts = seed().nfts
+  for (const nft of Object.values(nfts)) {
     const stored = previous.nfts[nft.id]
     if (!stored) continue
     const storedEditions = new Map(stored.editions.map((edition) => [edition.id, edition]))
@@ -47,17 +80,23 @@ function migrateFromV4(previous: DbStateV4): DbState {
     nft.version = stored.version
     nft.updatedAt = stored.updatedAt
   }
-  return next
+  return { schemaVersion: 5, nfts }
+}
+
+/** v5 → v6: keeps the catalog as persisted and adds the seed accounts and favorites. */
+function migrateFromV5(previous: DbStateV5): DbState {
+  return { ...seed(), nfts: previous.nfts }
 }
 
 function load(): DbState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as DbState | DbStateV4
+      const parsed = JSON.parse(raw) as DbState | DbStateV5 | DbStateV4
       if (parsed.schemaVersion === SCHEMA_VERSION) return parsed
-      if (parsed.schemaVersion === 4) {
-        const migrated = migrateFromV4(parsed)
+      const migrated =
+        parsed.schemaVersion === 5 ? migrateFromV5(parsed) : parsed.schemaVersion === 4 ? migrateFromV5(migrateFromV4(parsed)) : null
+      if (migrated) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
         return migrated
       }
@@ -104,5 +143,103 @@ export const nftsTable = {
     nft.updatedAt = new Date().toISOString()
     persist()
     return structuredClone(nft)
+  },
+}
+
+/** Public projection: never exposes the password hash or salt. */
+export function toPublicUser({ id, name, username, email, avatarUrl, bio }: UserRecord): User {
+  return { id, name, username, email, avatarUrl, bio }
+}
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase()
+
+export const usersTable = {
+  findById(id: string): UserRecord | undefined {
+    const user = state.users[id]
+    return user ? structuredClone(user) : undefined
+  },
+
+  findByEmail(email: string): UserRecord | undefined {
+    const target = normalizeEmail(email)
+    const user = Object.values(state.users).find((u) => u.email === target)
+    return user ? structuredClone(user) : undefined
+  },
+
+  findByUsername(username: string): UserRecord | undefined {
+    const target = username.trim().toLowerCase()
+    const user = Object.values(state.users).find((u) => u.username === target)
+    return user ? structuredClone(user) : undefined
+  },
+
+  create(record: UserRecord): UserRecord {
+    const user = { ...record, email: normalizeEmail(record.email), username: record.username.trim().toLowerCase() }
+    state.users[user.id] = user
+    state.favorites[user.id] = { nftIds: [], version: 1 }
+    persist()
+    return structuredClone(user)
+  },
+}
+
+export type SessionLookup =
+  | { status: 'valid'; session: SessionRecord }
+  | { status: 'expired' }
+  | { status: 'missing' }
+
+export const sessionsTable = {
+  create(userId: string, now = Date.now()): SessionRecord {
+    const session: SessionRecord = {
+      token: crypto.randomUUID(),
+      userId,
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
+    }
+    state.sessions[session.token] = session
+    persist()
+    return structuredClone(session)
+  },
+
+  lookup(token: string | null, now = Date.now()): SessionLookup {
+    const session = token ? state.sessions[token] : undefined
+    if (!session || !state.users[session.userId]) return { status: 'missing' }
+    if (Date.parse(session.expiresAt) <= now) return { status: 'expired' }
+    return { status: 'valid', session: structuredClone(session) }
+  },
+
+  delete(token: string) {
+    delete state.sessions[token]
+    persist()
+  },
+
+  /** Control endpoint: expires every session (or only the given user's). */
+  expire(userId?: string): number {
+    let count = 0
+    const past = new Date(Date.now() - 1000).toISOString()
+    for (const session of Object.values(state.sessions)) {
+      if (userId && session.userId !== userId) continue
+      session.expiresAt = past
+      count += 1
+    }
+    persist()
+    return count
+  },
+}
+
+export const favoritesTable = {
+  get(userId: string): FavoritesRecord {
+    return structuredClone(state.favorites[userId] ?? { nftIds: [], version: 1 })
+  },
+
+  /** Idempotent: adding an existing favorite or removing a missing one does not bump the version. */
+  set(userId: string, nftId: string, favorite: boolean): { record: FavoritesRecord; changed: boolean } {
+    const current = state.favorites[userId] ?? { nftIds: [], version: 1 }
+    const has = current.nftIds.includes(nftId)
+    if (has === favorite) return { record: structuredClone(current), changed: false }
+    const next: FavoritesRecord = {
+      nftIds: favorite ? [nftId, ...current.nftIds] : current.nftIds.filter((id) => id !== nftId),
+      version: current.version + 1,
+    }
+    state.favorites[userId] = next
+    persist()
+    return { record: structuredClone(next), changed: true }
   },
 }

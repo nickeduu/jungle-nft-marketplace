@@ -22,6 +22,7 @@ export type ApiErrorCode =
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'EMAIL_TAKEN'
+  | 'USERNAME_TAKEN'
   | 'AVAILABILITY_CONFLICT'
   | 'PRICE_CHANGED'
   | 'QUOTE_EXPIRED'
