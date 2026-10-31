@@ -2,7 +2,7 @@
 
 Solução do [desafio Front-end da Jungle Gaming](https://github.com/junglegaming/frontend-challenge): marketplace de NFTs em React + TypeScript com APIs, autenticação, carteiras, pagamentos e tempo real **simulados na camada de rede** (MSW + Socket.IO).
 
-> **Status:** Etapa 6 — Início (destaques + catálogo com busca, abas, filtros, ordenação e paginação na URL), Detalhe do NFT (galeria, edições na URL, quantidade com limite e estoque em tempo real, avaliações, compartilhamento, "Mais desta coleção"), **cadastro, login, logout e sessão** (recuperada após refresh, expiração tratada), **perfil** (edição de nome, usuário, e-mail e avatar; alteração de senha), **lista de interesse / favoritos** (otimista com rollback, por usuário) e **Socket.IO por sessão** e **carrinho** (visitante ou conta, mesclado no login, persistido na API simulada, estoque e preço em tempo real, contador). **checkout completo** (`/checkout`: dados do colecionador, carteira e rede, cotação com cupom e taxa, pedido idempotente) e **pedidos** (`/orders/:id`: pendente, confirmado com recibo, recusado; `order.updated` em tempo real) e **carteiras** (`/wallets`).
+> **Status:** Etapa 7 — todas as funcionalidades do README oficial implementadas (catálogo, detalhe, conta, favoritos, carrinho, checkout, pedidos, carteiras, perfil, tempo real). Nesta etapa: **artes originais dos 32 NFTs**, **regressão visual** (4 telas × 1440/768/390), **Lighthouse oficial** versionado e **deploy preparado para a Vercel** (publicação pendente de autorização).
 
 ## Stack
 
@@ -42,12 +42,89 @@ npx playwright install chromium
 | `npm run lint` | ESLint |
 | `npm run test:e2e` | Playwright contra o build de preview (desktop 1440 + mobile 390) |
 | `npm run test:e2e:report` | Abre o relatório HTML (traces das falhas incluídos) |
+| `npm run test:visual` | Regressão visual (início, detalhe, carrinho, pagamento em 1440, 768 e 390 px) |
+| `npm run test:visual:update` | Regrava as baselines visuais (só após mudança visual intencional — ver abaixo) |
 | `npm run lighthouse` | Build + auditoria (3 execuções, mobile e desktop, mediana) |
+| `npm run art` | Regera as artes dos NFTs (`public/images/nfts/`) a partir dos traços |
 | `npm run validate` | typecheck + lint + build + E2E |
 
 E2E contra o servidor de desenvolvimento: `E2E_TARGET=dev npx playwright test` (PowerShell: `$env:E2E_TARGET='dev'; npx playwright test`).
 
-Lighthouse rápido: `node scripts/lighthouse.mjs --runs=1 --form=mobile` (exige `npm run build` antes). Relatórios HTML/JSON e `summary.json` (versões, ambiente, medianas, LCP/CLS/TBT) em `lighthouse-reports/<timestamp>/`.
+Lighthouse rápido: `node scripts/lighthouse.mjs --runs=1 --form=mobile` (exige `npm run build` antes). Relatórios HTML/JSON, `summary.json` e `summary.md` (versões, condições, cada execução, medianas, LCP/CLS/TBT) em `lighthouse-reports/<timestamp>/` (ignorado pelo Git). A auditoria oficial vai para `docs/lighthouse/` (versionada) — ver [Lighthouse](#lighthouse-auditoria-oficial).
+
+## Artes dos NFTs
+
+Cada um dos 32 NFTs tem um personagem próprio — um primata colecionável com pelagem, roupa, acessório, expressão e fundo diferentes — e 4 imagens na galeria do detalhe, todas do mesmo personagem: retrato (capa usada no catálogo, carrinho, checkout e pedido), versão noturna, close no rosto e um "bastidor" com outra expressão.
+
+- **Origem:** ilustrações vetoriais **originais, criadas para este projeto** por `scripts/generate-nft-art.mjs` (desenho em SVG feito em código, determinístico, sem aleatoriedade). Não há ferramenta de geração de imagens no ambiente de desenvolvimento e nenhuma imagem de terceiros foi usada (nada de coleções existentes, bancos de imagem ou URLs externas). A composição (busto frontal sobre fundo claro, jaqueta college, óculos redondos, chapéu bucket, fones) segue as referências do Figma.
+- **Traços:** `src/mocks/fixtures/nft-art.ts` (uma entrada por NFT). O mesmo arquivo alimenta o script e os atributos "Acessório" e "Paleta" das fixtures, então o metadado sempre descreve a imagem.
+- **Arquivos:** `public/images/nfts/<id-do-nft>/{portrait,night,closeup,outtake}.webp` (800 × 800) e `*-sm.webp` (400 × 400) — 256 arquivos, ~3,2 MB no total, ~20 KB por imagem de 800 px e ~9 KB por miniatura.
+- **Formato e carregamento:** WebP (qualidade 0,8), servido localmente. `NftImage` monta o `srcset` 400w/800w com `sizes` por contexto (cards ~280 px, hero 448 px, miniaturas 40–72 px), `loading="lazy"` fora da primeira dobra, `fetchpriority="high"` na imagem principal do detalhe e no hero, `width`/`height` fixos (sem layout shift). Se uma imagem falhar, cai para `placeholder-nft.svg`.
+- **Texto alternativo:** a imagem do detalhe é descrita (`<nome> — imagem N de 4`); nos cards a imagem é decorativa (`alt=""`) porque o nome do NFT é o link do card.
+- **Regerar:** `npm run art` (todas) ou `npm run art -- --only=nft-001 --preview` (só uma, gravando também o SVG para inspeção). A rasterização e a codificação WebP usam o Chromium do Playwright, sem dependências novas. Depois de regerar, revise as imagens e atualize as baselines visuais.
+
+## Regressão visual
+
+`tests/e2e/visual.spec.ts` compara capturas de página inteira de **início, detalhe do NFT (`/nfts/nft-001`), carrinho e pagamento** em três projetos do Playwright: `visual-desktop` (1440 × 900), `visual-tablet` (768 × 1024) e `visual-mobile` (390 × 844), todos com fator de escala 1 — 12 capturas.
+
+Condições estáveis: contexto novo por teste (banco simulado no seed, cenário `default`), relógio fixo (`page.clock.setFixedTime`), tempo real conectado, rede ociosa, todas as imagens (inclusive as lazy) carregadas e decodificadas, fontes prontas, sem skeletons, toasts ou imagens de fallback, animações e cursor desativados. Carrinho e pagamento seguem o fluxo real: login da Ana e "Comprar NFT" em Distant Galaxy e Emerald Ape #042.
+
+```bash
+npm run test:visual            # compara com as baselines (tolerância zero de pixels)
+npm run test:visual:update     # regrava as baselines
+```
+
+Baselines em `tests/e2e/__screenshots__/<plataforma>/<projeto>/` (versionadas). A renderização de fontes varia entre sistemas operacionais, por isso a plataforma faz parte do caminho: as baselines atuais são `win32` (Windows 11, Chromium do Playwright 1.64). Em outro sistema, gere um conjunto próprio (ou rode no mesmo SO).
+
+**Atualizar baselines:** só depois de uma mudança visual intencional. Rode `npm run test:visual` primeiro e veja o diff no relatório (`npm run test:e2e:report` → aba "Diff"); se a diferença for a esperada, rode `npm run test:visual:update`, revise os PNGs novos no diff do Git e explique a mudança visual no commit. Nunca regrave só para o teste passar.
+
+A suíte passou 36/36 em `--repeat-each=3` sem tolerância, e detecta mudanças reais: um único caractere a mais no botão do hero gerou 201 pixels diferentes e reprovou o teste (mutação desfeita em seguida).
+
+## Lighthouse (auditoria oficial)
+
+```bash
+npm run lighthouse -- --out=docs/lighthouse/<data>     # build + 3 execuções × {início, detalhe} × {mobile, desktop}
+```
+
+`scripts/lighthouse.mjs` (configuração versionada) builda a app, serve com `vite preview` (mocks ativos, cenário `default`) e roda o Lighthouse 13 com os perfis padrão (mobile: Moto G Power emulado, throttling simulado de 4× CPU e ~1,6 Mbps / 150 ms RTT; desktop: `desktop-config`). Cada execução abre um Chrome novo, sem cache nem Service Worker registrado. Páginas: `/` e `/nfts/nft-distant-galaxy`. Saída: relatórios HTML/JSON de cada execução, `summary.json` (versões, condições de throttling, amostras, medianas) e `summary.md`.
+
+**Resultado oficial — [`docs/lighthouse/2026-10-31/`](./docs/lighthouse/2026-10-31/summary.md)** (Windows 11, Ryzen 7 5700U, Chrome 156, Lighthouse 13.6.0; medianas de 3 execuções):
+
+| Página / perfil | Performance | Accessibility | Best Practices | SEO | LCP | CLS | TBT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Início — mobile | **76** ✗ | 100 | 100 | 100 | 3.556 ms | 0,026 | 550 ms |
+| Detalhe — mobile | **77** ✗ | 100 | 100 | 100 | 3.449 ms | 0 | 570 ms |
+| Início — desktop | 99 | 100 | 100 | 100 | 1.000 ms | 0,01 | 2 ms |
+| Detalhe — desktop | 99 | 100 | 100 | 100 | 1.018 ms | 0 | 47 ms |
+
+Execuções individuais (Perf): início mobile 76 / 75 / 82; detalhe mobile 72 / 77 / 82; início desktop 99 / 99 / 99; detalhe desktop 94 / 99 / 99. Metas: Performance ≥ 90 ✗ no mobile (✓ no desktop); Accessibility ≥ 95, Best Practices ≥ 95 e SEO ≥ 90 ✓ em todos os cenários.
+
+Evolução nesta etapa (medianas mobile, mesma máquina): primeira auditoria oficial 61 / 61 (TBT 1.892 / 3.289 ms, LCP 3.814 / 3.608 ms) → final 76 / 77 (TBT 550 / 570 ms, LCP 3.556 / 3.449 ms). O índice de CPU medido pelo Lighthouse também esteve mais alto na auditoria final (~1.700–2.100 contra ~700–1.100), então parte da diferença é da máquina. A parte que independe dela foi medida em separado: layout total da home com CPU 4× 460 → 139 ms; DOM da home no mobile 434 → 231 nós.
+
+**Por que o mobile não chega a 90** (análise completa em ARCHITECTURE.md › Qualidade):
+- **LCP (~3,4–3,6 s) é o teto.** A imagem principal só é conhecida depois da resposta da API, que exige o Service Worker do MSW ativo. No throttling simulado (~1,6 Mbps, 150 ms de RTT) isso dá a cadeia HTML → ~250 KB de JS (React, router/query/axios, MSW) + CSS + fonte → API → render → imagem. Só a banda dos bytes obrigatórios custa ~1,3 s. Com LCP nessa faixa, 90 só sai com TBT perto de zero (uma execução de diagnóstico chegou a 90 com TBT 152 ms).
+- **TBT residual (~350–770 ms):** avaliação dos módulos (React, router, MSW), renders do React a cada resposta da API e o primeiro layout. São tarefas de 15–50 ms reais, que o perfil mobile multiplica por 4.
+- No detalhe, a Etapa 6 registrava LCP ≈ 1 s porque os placeholders SVG eram imagens de baixa entropia, que o Chrome não conta como LCP (o elemento era o título). Agora a arte real é o LCP.
+- O que ainda reduziria a nota sem truque (pré-renderização/SSR, mocks fora da página, remover o Socket.IO do boot) muda a arquitetura ou os requisitos. Ficou documentado e não foi feito.
+- **Corrigido nesta etapa:**
+  - **preload da fonte** (subconjunto latino da Roboto Mono): sem ele, a primeira renderização era diagramada com a fonte reserva e diagramada de novo quando a fonte chegava. Esse era o maior bloco de TBT, um `Layout` de até ~200 ms reais;
+  - **blocos só de desktop deixam de ser renderizados no celular** (cabeçalho, barra lateral de filtros e destaque, rodapé), em vez de só escondidos por CSS. O resultado visual é idêntico: as 12 baselines passam sem diferença de pixel;
+  - chunk do mock de 178 para 57 KB gzip (cookie store do MSW removido) e pacote `cn` duplicado removido;
+  - assets saem do MSW já no primeiro handler, e os handlers foram ordenados por frequência;
+  - prefetch dos dados nos loaders das rotas e `modulepreload` dos chunks de boot;
+  - `srcset` 400/800 nas artes e `robots.txt` (SEO 92 → 100).
+
+## Deploy (Vercel)
+
+O deploy publica o mesmo build do preview: SPA estática com MSW (REST) e Socket.IO simulados no próprio navegador. Não há backend, segredo nem serviço externo. Configuração em `vercel.json`:
+
+- **Build:** `npm ci` + `npm run build` → `dist/` (framework Vite; Node ≥ 22.12, o padrão atual da Vercel atende).
+- **Mocks:** `VITE_ENABLE_MOCKS=true` vem do `.env` versionado e é lido no build. Não é preciso criar variáveis no painel. Se criar, use os mesmos valores da tabela abaixo, nunca segredos.
+- **Rotas:** qualquer caminho fora de `/api/*` sem arquivo estático correspondente é reescrito para `index.html`, então acesso direto e refresh funcionam em `/nfts/:id`, `/cart`, `/checkout`, `/orders/:id` etc. Os arquivos reais (`/assets`, `/images`, `/mockServiceWorker.js`, `/robots.txt`) são servidos antes da reescrita. `/api/*` fica sem reescrita de propósito: essas chamadas são respondidas pelo Service Worker; se algo escapar dele, a resposta é um 404 claro, e não o HTML da SPA.
+- **Cabeçalhos:** `mockServiceWorker.js` com `Cache-Control: no-cache` (o worker atualiza a cada deploy); `/assets/*` imutável por 1 ano (nomes com hash); `/images/*` por 7 dias; `nosniff` e `Referrer-Policy` em tudo.
+- **Assets:** as artes ficam em `public/images/nfts/` e são copiadas para `dist/` pelo Vite.
+
+Publicar (exige autorização do responsável): importe o repositório em vercel.com → *Add New Project* (as configurações vêm do `vercel.json`) ou rode `npx vercel --prod` na raiz. Depois, valide **em janela anônima**: início, detalhe, cadastro/login, favoritos, carrinho, checkout, pagamento simulado, pedido confirmado, tempo real (painel **Simulação (MSW)** no detalhe), refresh em rota interna e layout mobile.
 
 ## Variáveis de ambiente
 
@@ -151,5 +228,15 @@ Em `/profile`: edite nome de exibição, nome de usuário ou e-mail e clique em 
 ## Testes
 
 Cada teste roda em contexto isolado (localStorage limpo → seed). Nesta máquina de desenvolvimento a suíte roda com `--workers=4` (`npx playwright test --workers=4`); o padrão do Playwright (metade dos núcleos) sobrecarrega máquinas com pouca RAM. As verificações observam a interface; REST passa pelo Service Worker do MSW (verificado com `response.fromServiceWorker()`) e tempo real passa pelo `socket.io-client`.
+
+Suíte completa da Etapa 7 (`npx playwright test --workers=2`): **276 aprovados, 4 pulados, 0 falhas** (9,4 min). Os 4 pulados são testes de layout específicos de viewport (desktop no projeto mobile e vice-versa), pulados de propósito. Os 12 testes visuais fazem parte da suíte.
+
+## Limitações conhecidas
+
+- **Performance mobile abaixo da meta** (medianas 76 e 77; ver [Lighthouse](#lighthouse-auditoria-oficial)). Ganhos maiores exigiriam mudar a natureza da entrega (pré-renderização/SSR, ou mocks fora da página), o que conflita com o requisito de simular a API no navegador com MSW.
+- **Baselines visuais só para Windows (`win32`).** Em outro SO a renderização de fontes muda: gere um conjunto próprio com `npm run test:visual:update` nesse ambiente.
+- **Artes em estilo vetorial**, não na renderização 3D do Figma (os assets originais não estão disponíveis; ver Artes dos NFTs).
+- **Pedidos antigos no `localStorage`** (criados antes desta etapa) guardam o caminho da arte antiga no recibo e mostram o placeholder. Um `POST /api/__mock/reset` ou uma janela anônima resolve.
+- Mock no próprio navegador: segurança simulada, sem rate limit nem recuperação de senha (ARCHITECTURE.md › MSW + Socket.IO).
 
 Arquitetura, contratos e decisões: [ARCHITECTURE.md](./ARCHITECTURE.md).

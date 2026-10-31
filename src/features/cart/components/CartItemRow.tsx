@@ -42,6 +42,7 @@ export function CartItemRow({ item, cartKey }: { item: CartItem; cartKey: readon
             alt=""
             width={72}
             height={72}
+            sizes="72px"
             loading="lazy"
             decoding="async"
             className={cn('row-span-2 size-[4.5rem] rounded-xl bg-muted object-cover md:size-12 md:rounded-md', unavailable && 'opacity-50')}

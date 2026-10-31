@@ -99,7 +99,7 @@ export function ProfileForm({ user }: { user: User }) {
           {avatar ? (
             <img src={avatar} alt="Prévia do avatar" className="size-12 rounded-full object-cover" data-testid="avatar-preview" />
           ) : (
-            <span className="grid size-12 place-items-center rounded-full bg-muted text-xs text-muted-foreground" data-testid="avatar-preview">
+            <span className="grid size-12 shrink-0 place-items-center rounded-full bg-muted text-center text-[10px] leading-tight text-muted-foreground" data-testid="avatar-preview">
               Sem foto
             </span>
           )}

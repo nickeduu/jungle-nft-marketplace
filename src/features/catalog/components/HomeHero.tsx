@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { NftImage } from '@/features/nft-detail/components/NftImage'
 import { cn } from '@/shared/lib/utils'
 import { highlightsQuery } from '../api'
 
@@ -58,11 +59,12 @@ export function HomeHero() {
               params={{ nftId: current.id }}
               className="group relative block overflow-hidden rounded-2xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
-              <img
+              <NftImage
                 src={current.imageUrl}
                 alt={`Destaque: ${current.name}`}
                 width={480}
                 height={480}
+                sizes="(min-width: 768px) 448px, 128px"
                 fetchPriority="high"
                 className="aspect-square w-full bg-muted object-cover"
               />

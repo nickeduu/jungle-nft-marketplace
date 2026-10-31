@@ -1,5 +1,5 @@
 import * as React from "react"
-import { cn } from "cn"
+import { cn } from "@/shared/lib/utils"
 import { Tabs as TabsPrimitive } from "radix-ui"
 
 /** shadcn/ui Tabs, restyled for Kurio: underlined copper tab on a bottom border (Figma detail frame). */

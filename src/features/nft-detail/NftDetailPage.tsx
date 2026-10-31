@@ -141,7 +141,7 @@ function NftDetailContent({
             <h1 className="text-xl font-semibold md:text-2xl">{nft.name}</h1>
             <div className="flex shrink-0 items-center gap-4 md:w-full md:border-b md:pb-2">
               {edition && (
-                <p className="hidden text-lg font-semibold text-primary md:block" data-testid="selected-edition-price">
+                <p className="hidden text-lg font-semibold whitespace-nowrap text-primary md:block" data-testid="selected-edition-price">
                   {formatEth(edition.priceEth)}
                 </p>
               )}

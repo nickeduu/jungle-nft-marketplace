@@ -5,6 +5,7 @@ import { useId } from 'react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { ApiError } from '@/services/api/http'
+import { BREAKPOINTS, useMediaQuery } from '@/shared/hooks/use-media-query'
 import type { NftSort, NftTab } from '@/shared/contracts'
 import { cn } from '@/shared/lib/utils'
 import { nftListQuery } from './api'
@@ -43,6 +44,8 @@ export function CatalogPage({ search, onChange, onClear }: CatalogPageProps) {
   const params = toListParams(search)
   const query = useQuery(nftListQuery(params))
   const sortId = useId()
+  // The sidebar exists only from `lg` up; below it the filters live in the sheet.
+  const wide = useMediaQuery(BREAKPOINTS.lg)
 
   const filters = <CatalogFilters search={search} onChange={onChange} onClear={onClear} />
 
@@ -75,12 +78,14 @@ export function CatalogPage({ search, onChange, onClear }: CatalogPageProps) {
           Catálogo de NFTs
         </h2>
         <div className="grid gap-6 lg:grid-cols-[14rem_minmax(0,1fr)]">
-          <div className="hidden space-y-4 self-start lg:block">
-            <aside aria-label="Filtros" className="rounded-xl bg-card p-4">
-              {filters}
-            </aside>
-            <FeaturedSidebarCard />
-          </div>
+          {wide && (
+            <div className="hidden space-y-4 self-start lg:block">
+              <aside aria-label="Filtros" className="rounded-xl bg-card p-4">
+                {filters}
+              </aside>
+              <FeaturedSidebarCard />
+            </div>
+          )}
 
           <div>
             <div className="mb-4 hidden md:block">

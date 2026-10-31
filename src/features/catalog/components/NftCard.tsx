@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FavoriteButton } from '@/features/favorites/components/FavoriteButton'
+import { NftImage } from '@/features/nft-detail/components/NftImage'
 import type { NftSummary } from '@/shared/contracts'
 import { formatEth } from '@/shared/lib/eth'
 import { cn } from '@/shared/lib/utils'
@@ -23,11 +24,12 @@ export function NftCard({ nft, priority = false, className }: { nft: NftSummary;
       data-available={nft.totalAvailable}
     >
       <div className="relative">
-        <img
+        <NftImage
           src={nft.imageUrl}
           alt=""
           width={400}
           height={400}
+          sizes="(min-width: 768px) 280px, 50vw"
           loading={priority ? 'eager' : 'lazy'}
           decoding="async"
           className="aspect-square w-full rounded-lg bg-muted object-cover"

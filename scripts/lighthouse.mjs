@@ -4,11 +4,14 @@
  *
  *   npm run lighthouse                      # 3 runs, mobile + desktop, home + detail
  *   npm run lighthouse -- --runs=1 --form=mobile
+ *   npm run lighthouse -- --out=docs/lighthouse/<date>   # official, versioned run
  *
- * Reports: lighthouse-reports/<timestamp>/{page}-{form}-run{n}.report.{html,json} + summary.json
+ * Reports: lighthouse-reports/<timestamp>/ (git-ignored scratch runs) or --out=<dir>:
+ * {page}-{form}-run{n}.report.{html,json} + summary.json (conditions, samples, medians)
+ * + summary.md (the same table in Markdown).
  * Uses installed Chrome, or Playwright's Chromium if Chrome is not found (CHROME_PATH overrides).
  */
-import { spawn } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { chromium } from '@playwright/test'
@@ -29,6 +32,28 @@ const median = (values) => {
   const sorted = [...values].sort((a, b) => a - b)
   const mid = Math.floor(sorted.length / 2)
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+const LABELS = { performance: 'Perf', accessibility: 'A11y', 'best-practices': 'BP', seo: 'SEO', lcpMs: 'LCP (ms)', cls: 'CLS', tbtMs: 'TBT (ms)', benchmarkIndex: 'CPU bench' }
+
+function toMarkdown(s) {
+  const keys = Object.keys(LABELS)
+  const header = `| Cenário | Execução | ${keys.map((k) => LABELS[k]).join(' | ')} |\n|---|---|${keys.map(() => '---:').join('|')}|`
+  const rows = Object.entries(s.results).flatMap(([name, { samples, median: med }]) => [
+    ...samples.map((sample, i) => `| ${name} | ${i + 1} | ${keys.map((k) => sample[k]).join(' | ')} |`),
+    `| **${name}** | **mediana** | ${keys.map((k) => `**${med[k]}**`).join(' | ')} |`,
+  ])
+  return [
+    `# Lighthouse — ${s.date}`,
+    '',
+    `Lighthouse ${s.lighthouseVersion} · Chrome ${s.chromeVersion} · Node ${s.node} · ${s.platform} · commit ${s.gitCommit ?? 'n/d'}`,
+    `Build: ${s.build}. ${s.runsPerPage} execuções por página e perfil, Chrome novo a cada execução.`,
+    `Páginas: ${Object.entries(s.pages).map(([k, v]) => `${k} = \`${v}\``).join(', ')}.`,
+    '',
+    header,
+    ...rows,
+    '',
+  ].join('\n')
 }
 
 async function waitForServer(url, timeoutMs = 30_000) {
@@ -57,15 +82,29 @@ function chromePath() {
 const preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], {
   stdio: 'ignore',
 })
-const outDir = join('lighthouse-reports', new Date().toISOString().replace(/[:.]/g, '-'))
+const outDir = args.out ?? join('lighthouse-reports', new Date().toISOString().replace(/[:.]/g, '-'))
+const gitCommit = (() => {
+  try {
+    const dirty = execSync('git status --porcelain', { encoding: 'utf8' }).trim() !== ''
+    return `${execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()}${dirty ? ' (+ alterações não commitadas)' : ''}`
+  } catch {
+    return null
+  }
+})()
 await mkdir(outDir, { recursive: true })
 
 const summary = {
+  date: new Date().toISOString(),
+  gitCommit,
   lighthouseVersion: null,
+  chromeVersion: null,
   chromePath: chromePath(),
   node: process.version,
   platform: `${process.platform} ${process.arch}`,
   runsPerPage: runs,
+  build: 'vite build + vite preview (VITE_ENABLE_MOCKS=true, cenário default)',
+  pages: PAGES,
+  conditions: {},
   results: {},
 }
 
@@ -86,6 +125,13 @@ try {
           if (!result) throw new Error('Lighthouse returned no result')
           const { lhr, report } = result
           summary.lighthouseVersion = lhr.lighthouseVersion
+          summary.chromeVersion = lhr.environment.hostUserAgent.match(/Chrome\/([\d.]+)/)?.[1] ?? null
+          summary.conditions[form] = {
+            formFactor: lhr.configSettings.formFactor,
+            throttlingMethod: lhr.configSettings.throttlingMethod,
+            throttling: lhr.configSettings.throttling,
+            screenEmulation: lhr.configSettings.screenEmulation,
+          }
           const base = join(outDir, `${pageName}-${form}-run${run}`)
           await writeFile(`${base}.report.html`, report[0])
           await writeFile(`${base}.report.json`, report[1])
@@ -94,6 +140,8 @@ try {
             lcpMs: Math.round(lhr.audits['largest-contentful-paint']?.numericValue ?? 0),
             cls: Number((lhr.audits['cumulative-layout-shift']?.numericValue ?? 0).toFixed(3)),
             tbtMs: Math.round(lhr.audits['total-blocking-time']?.numericValue ?? 0),
+            // Lighthouse's CPU benchmark of this machine for the run (higher = faster host).
+            benchmarkIndex: Math.round(lhr.environment.benchmarkIndex),
           })
         } finally {
           await chrome.kill()
@@ -106,6 +154,7 @@ try {
     }
   }
   await writeFile(join(outDir, 'summary.json'), JSON.stringify(summary, null, 2))
+  await writeFile(join(outDir, 'summary.md'), toMarkdown(summary))
   console.log(`\nReports: ${outDir}`)
 } finally {
   preview.kill()

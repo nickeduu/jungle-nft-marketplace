@@ -41,7 +41,7 @@ export function NftGallery({ name, images }: { name: string; images: string[] })
                 'data-[state=active]:border-primary data-[state=active]:opacity-100',
               )}
             >
-              <NftImage src={src} alt="" width={96} height={96} decoding="async" className="size-full bg-muted object-cover" />
+              <NftImage src={src} alt="" width={96} height={96} sizes="72px" decoding="async" className="size-full bg-muted object-cover" />
             </TabsPrimitive.Trigger>
           ))}
         </TabsPrimitive.List>
@@ -57,6 +57,7 @@ export function NftGallery({ name, images }: { name: string; images: string[] })
             alt={altFor(i)}
             width={600}
             height={600}
+            sizes="(min-width: 1024px) 520px, (min-width: 768px) 45vw, 100vw"
             // The first image is the page's LCP element.
             fetchPriority={i === 0 ? 'high' : 'auto'}
             decoding="async"

@@ -21,9 +21,16 @@ export default defineConfig({
     locale: 'pt-BR',
     timezoneId: 'America/Sao_Paulo',
   },
+  // Visual baselines: tests/e2e/__screenshots__/<platform>/<project>/ (README › Regressão visual).
+  snapshotPathTemplate: '{testDir}/__screenshots__/{platform}/{projectName}/{arg}{ext}',
+  expect: { toHaveScreenshot: { animations: 'disabled', caret: 'hide', scale: 'css' } },
   projects: [
-    { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
-    { name: 'mobile-chromium', use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } } },
+    { name: 'desktop-chromium', testIgnore: /visual\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
+    { name: 'mobile-chromium', testIgnore: /visual\.spec\.ts/, use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } } },
+    // Visual regression at the README widths (390, 768, 1440), device scale factor 1.
+    { name: 'visual-desktop', testMatch: /visual\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 } },
+    { name: 'visual-tablet', testMatch: /visual\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 768, height: 1024 }, deviceScaleFactor: 1, hasTouch: true } },
+    { name: 'visual-mobile', testMatch: /visual\.spec\.ts/, use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 } },
   ],
   webServer: {
     command: isDev ? 'npm run dev' : 'npm run build && npm run preview',

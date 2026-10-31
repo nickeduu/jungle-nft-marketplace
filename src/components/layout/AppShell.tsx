@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useSession } from '@/features/auth/session'
 import { useCartCount } from '@/features/cart/hooks'
 import { useRealtimeStatus } from '@/services/realtime/RealtimeProvider'
+import { BREAKPOINTS, useMediaQuery } from '@/shared/hooks/use-media-query'
 import { cn } from '@/shared/lib/utils'
 import { SiteFooter } from './SiteFooter'
 
@@ -19,6 +20,8 @@ const UNAVAILABLE = 'Indisponível nesta versão'
 export function AppShell({ children }: { children: ReactNode }) {
   // Routes with their own mobile bottom bar (NFT detail) opt out of the bottom navigation.
   const hideMobileNav = useRouterState({ select: (state) => state.matches.some((match) => match.staticData.hideMobileNav) })
+  // Header and footer exist only from `md` up (CSS hides them below): not rendered on phones.
+  const desktop = useMediaQuery(BREAKPOINTS.md)
   return (
     <div className="min-h-dvh">
       <a
@@ -27,12 +30,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Pular para o conteúdo
       </a>
-      <DesktopHeader />
+      {desktop && <DesktopHeader />}
       <RealtimeIndicator />
       <main id="conteudo" className={cn('mx-auto max-w-6xl px-4 pb-28 sm:px-6 md:pb-12', hideMobileNav && 'pb-12')}>
         {children}
       </main>
-      <SiteFooter />
+      {desktop && <SiteFooter />}
       {!hideMobileNav && <MobileNav />}
     </div>
   )

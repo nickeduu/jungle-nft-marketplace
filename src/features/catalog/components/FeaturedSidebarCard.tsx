@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Skeleton } from '@/components/ui/skeleton'
+import { NftImage } from '@/features/nft-detail/components/NftImage'
 import { formatEth } from '@/shared/lib/eth'
 import { highlightsQuery } from '../api'
 
@@ -23,11 +24,12 @@ export function FeaturedSidebarCard() {
         NFT em destaque
       </h2>
       <p className="text-xs font-semibold uppercase">Edição limitada</p>
-      <img
+      <NftImage
         src={nft.imageUrl}
         alt=""
         width={240}
         height={240}
+        sizes="240px"
         loading="lazy"
         className="mt-3 aspect-square w-full rounded-lg bg-muted object-cover"
       />

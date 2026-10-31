@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback } from 'react'
+import { nftDetailQuery } from '@/features/nft-detail/api'
 import { NftDetailPage } from '@/features/nft-detail/NftDetailPage'
 import { validateNftDetailSearch } from '@/features/nft-detail/search-params'
 
@@ -8,6 +9,10 @@ export const Route = createFileRoute('/nfts/$nftId')({
   validateSearch: validateNftDetailSearch,
   // Mobile: the page has its own top bar and fixed purchase bar (Figma mobile-02), no bottom nav.
   staticData: { hideMobileNav: true },
+  // Non-blocking prefetch, in parallel with the page chunk (see routes/index.tsx).
+  loader: ({ context: { queryClient }, params }) => {
+    void queryClient.prefetchQuery(nftDetailQuery(params.nftId))
+  },
   component: RouteComponent,
 })
 

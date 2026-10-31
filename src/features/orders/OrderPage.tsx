@@ -123,7 +123,7 @@ function Receipt({ order }: { order: Order }) {
         <ul className="mt-3 space-y-2" aria-label="Itens comprados" data-testid="order-items">
           {order.lines.map((line) => (
             <li key={`${line.nftId}:${line.editionId}`} className="flex items-center gap-3 text-xs">
-              <NftImage src={line.imageUrl} alt="" width={40} height={40} className="size-10 rounded-md bg-muted object-cover" />
+              <NftImage src={line.imageUrl} alt="" width={40} height={40} sizes="40px" className="size-10 rounded-md bg-muted object-cover" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold">{line.name}</span>
                 <span className="text-muted-foreground">
