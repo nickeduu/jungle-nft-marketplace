@@ -1,5 +1,6 @@
 import { setupWorker } from 'msw/browser'
 import { handlers } from './handlers'
+import { resumePendingPayments } from './payments'
 import { getActiveScenarioName, initScenarioFromUrl } from './scenarios'
 
 export const worker = setupWorker(...handlers)
@@ -14,5 +15,7 @@ export async function startMockWorker() {
     },
     quiet: import.meta.env.PROD,
   })
+  // Payments that were pending when the page closed resume (or settle if already due).
+  resumePendingPayments()
   console.info(`[mocks] MSW active — scenario "${getActiveScenarioName()}"`)
 }

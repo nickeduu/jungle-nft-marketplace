@@ -5,9 +5,9 @@ import { currentUserId, useSession } from '@/features/auth/session'
 import { ApiError } from '@/services/api/http'
 import { guestCartId } from '@/services/api/guest-cart'
 import type { AddCartItemRequest, Cart, CartItem } from '@/shared/contracts'
-import { addEth, multiplyEth } from '@/shared/lib/eth'
+import { addEth, multiplyEth, percentOfEth, subtractEth } from '@/shared/lib/eth'
 import { guestCartKeys, privateKeys } from '@/shared/query-keys'
-import { addCartItem, fetchCart, removeCartItem, updateCartItem } from './api'
+import { addCartItem, applyCoupon, fetchCart, removeCartItem, removeCoupon, updateCartItem } from './api'
 
 /**
  * Cache key of the cart shown right now: the user's (private, keyed by user id) or the visitor's
@@ -56,14 +56,16 @@ export const describeItem = (item: Pick<CartItem, 'name' | 'editionName'>) => `$
 /** Optimistic cart with totals recomputed by the same exact (BigInt) helpers; the API response replaces it. */
 function withItems(cart: Cart, items: CartItem[]): Cart {
   const subtotalEth = addEth('0', ...items.map((item) => item.lineTotalEth))
+  const discountEth = cart.coupon ? percentOfEth(subtotalEth, cart.coupon.percentOff) : '0'
   const networkFeeEth = items.length > 0 ? cart.networkFeeEth : '0'
   return {
     ...cart,
     items,
     itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
     subtotalEth,
+    discountEth,
     networkFeeEth,
-    totalEth: addEth(subtotalEth, networkFeeEth),
+    totalEth: addEth(subtractEth(subtotalEth, discountEth), networkFeeEth),
     checkoutReady: items.length > 0 && items.every((item) => item.status === 'ok'),
   }
 }
@@ -159,5 +161,19 @@ export function useRemoveCartItem() {
     request: ({ item }) => removeCartItem(item.nftId, item.editionId),
     apply: (cart, { item }) => withItems(cart, cart.items.filter((line) => line.id !== item.id)),
     errorMessage: ({ item }) => `Não foi possível remover ${describeItem(item)}. O item voltou ao carrinho.`,
+  })
+}
+
+/** Applies (`code`) or removes (`null`) the cart coupon; the discount shows once the API validated it. */
+export function useCartCoupon() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: WRITE_KEY,
+    scope: CART_SCOPE,
+    mutationFn: (code: string | null) => (code === null ? removeCoupon() : applyCoupon(code)),
+    onSuccess: (cart) => {
+      const key = currentCartKey(queryClient)
+      if (key) queryClient.setQueryData(key, cart)
+    },
   })
 }

@@ -4,17 +4,15 @@ import type { ReactNode } from 'react'
 import { useLogout } from '@/features/auth/hooks'
 import { cn } from '@/shared/lib/utils'
 
-const UNAVAILABLE = 'Indisponível nesta versão'
-
 const itemClass =
   'flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-xs whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring md:rounded-none md:border-l-2 md:border-transparent md:px-4'
 
 /**
- * Account area (Figma desktop-08: "Meu perfil" side menu). Only implemented sections are links;
- * wallets (next stages) appear unavailable; activity, offers, downloads and support are out of
+ * Account area (Figma desktop-08: "Meu perfil" side menu): profile, wallets and favorites;
+ * activity, offers, downloads and support are out of
  * scope (README) and are not shown. Mobile: the menu becomes a horizontal row above the content.
  */
-export function ProfileLayout({ active, children }: { active: 'profile' | 'favorites'; children: ReactNode }) {
+export function ProfileLayout({ active, children }: { active: 'profile' | 'wallets' | 'favorites'; children: ReactNode }) {
   const logout = useLogout()
   const navigate = useNavigate()
 
@@ -35,11 +33,14 @@ export function ProfileLayout({ active, children }: { active: 'profile' | 'favor
             </Link>
           </li>
           <li>
-            <span aria-disabled="true" title={UNAVAILABLE} className={cn(itemClass, 'cursor-not-allowed text-muted-foreground')}>
+            <Link
+              to="/wallets"
+              aria-current={active === 'wallets' ? 'page' : undefined}
+              className={cn(itemClass, 'hover:text-primary aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary md:aria-[current=page]:border-primary')}
+            >
               <Wallet className="size-3.5" aria-hidden="true" />
               Carteiras
-              <span className="sr-only"> ({UNAVAILABLE})</span>
-            </span>
+            </Link>
           </li>
           <li>
             <Link

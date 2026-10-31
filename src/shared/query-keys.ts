@@ -30,6 +30,10 @@ export const privateKeys = {
   profile: (userId: string) => [...privateKeys.user(userId), 'profile'] as const,
   favorites: (userId: string) => [...privateKeys.user(userId), 'favorites'] as const,
   cart: (userId: string) => [...privateKeys.user(userId), 'cart'] as const,
+  wallets: (userId: string) => [...privateKeys.user(userId), 'wallets'] as const,
+  quote: (userId: string, network: string) => [...privateKeys.user(userId), 'quote', network] as const,
+  orders: (userId: string) => [...privateKeys.user(userId), 'orders'] as const,
+  order: (userId: string, orderId: string) => [...privateKeys.orders(userId), orderId] as const,
 }
 
 /** Visitor cart, keyed by its id (a new visitor after logout gets a new id: nothing is shared). */

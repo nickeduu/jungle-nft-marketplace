@@ -3,13 +3,12 @@ import { useId } from 'react'
 import { Button } from '@/components/ui/button'
 import type { Cart } from '@/shared/contracts'
 import { formatEth } from '@/shared/lib/eth'
-
-const UNAVAILABLE = 'Indisponível nesta versão'
+import { CouponForm } from './CouponForm'
 
 /**
  * "Resumo da carteira" (Figma desktop-03 / mobile-03). Every value comes from the API response
- * (or its optimistic recomputation). Coupons arrive with the checkout quote, so the field is
- * visibly unavailable here. Checkout is blocked while an item is sold out.
+ * (or its optimistic recomputation). The coupon is validated by the API and re-checked by the
+ * checkout quote. Checkout is blocked while an item is sold out.
  */
 export function CartSummary({ cart }: { cart: Cart }) {
   const navigate = useNavigate()
@@ -23,26 +22,7 @@ export function CartSummary({ cart }: { cart: Cart }) {
         Resumo da carteira
       </h2>
 
-      <div className="mt-4">
-        <label htmlFor={`${titleId}-coupon`} className="text-xs font-medium">
-          Código promocional
-        </label>
-        <div className="mt-1.5 flex" title={UNAVAILABLE}>
-          <input
-            id={`${titleId}-coupon`}
-            disabled
-            placeholder="Digite o código promocional..."
-            aria-describedby={`${titleId}-coupon-hint`}
-            className="h-9 min-w-0 flex-1 rounded-l-md border border-r-0 bg-background px-3 text-xs placeholder:text-muted-foreground/70 disabled:opacity-60"
-          />
-          <button type="button" disabled className="h-9 rounded-r-md bg-primary/60 px-3 text-xs font-semibold text-primary-foreground">
-            Aplicar
-          </button>
-        </div>
-        <p id={`${titleId}-coupon-hint`} className="mt-1 text-[11px] text-muted-foreground">
-          Cupons: {UNAVAILABLE.toLowerCase()}.
-        </p>
-      </div>
+      <CouponForm coupon={cart.coupon} />
 
       <dl className="mt-4 space-y-2 text-sm">
         <Row label="Subtotal" value={formatEth(cart.subtotalEth)} testId="cart-subtotal" />

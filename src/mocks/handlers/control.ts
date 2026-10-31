@@ -4,6 +4,9 @@ import { buildNftUpdatedEvent, connectionCount, describeConnections, disconnectA
 import { nftsTable, resetDb, sessionsTable, usersTable } from '@/mocks/store/db'
 import type { ServerToClientEvents } from '@/shared/contracts'
 import { isEthDecimal } from '@/shared/lib/eth'
+import { resolveOrder } from '@/mocks/payments'
+import { feesTable, walletsTable } from '@/mocks/store/db'
+import { NETWORKS } from '@/shared/contracts'
 import { changeFavorite } from './favorites'
 
 /**
@@ -68,6 +71,30 @@ export const controlHandlers = [
     const user = email ? usersTable.findByEmail(email) : undefined
     if (email && !user) return errorResponse(404, 'NOT_FOUND', 'Usuário não encontrado.')
     return HttpResponse.json({ expired: sessionsTable.expire(user?.id) })
+  }),
+
+  /** Resolves a pending order (payment-pending scenario): `confirmed` or `rejected`. */
+  http.post<{ orderId: string }, { status: 'confirmed' | 'rejected'; reason?: string }>(`${base}/orders/:orderId/resolve`, async ({ request, params }) => {
+    const { status, reason } = await request.json()
+    if (status !== 'confirmed' && status !== 'rejected') return errorResponse(422, 'VALIDATION_ERROR', 'Use confirmed ou rejected.')
+    const order = resolveOrder(params.orderId, status, reason)
+    if (!order) return errorResponse(404, 'NOT_FOUND', 'Pedido não encontrado.')
+    return HttpResponse.json({ status: order.status, version: order.version })
+  }),
+
+  /** The simulated wallet connection of every user drops (wallet disconnected during checkout). */
+  http.post(`${base}/wallets/disconnect`, () => {
+    walletsTable.disconnectAll()
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  /** Changes the network fee (fee change during checkout: the current quote becomes stale). */
+  http.post<never, { network: string; feeEth: string }>(`${base}/fees`, async ({ request }) => {
+    const { network, feeEth } = await request.json()
+    const chosen = NETWORKS.find((n) => n === network)
+    if (!chosen || !isEthDecimal(feeEth)) return errorResponse(422, 'VALIDATION_ERROR', 'Rede ou taxa inválida.')
+    feesTable.set(chosen, feeEth)
+    return new HttpResponse(null, { status: 204 })
   }),
 
   /** Changes a user's favorites as if from another device: store + private `favorites.updated`. */

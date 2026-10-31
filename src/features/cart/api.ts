@@ -18,6 +18,16 @@ export async function updateCartItem(nftId: string, editionId: string, quantity:
   return data
 }
 
+export async function applyCoupon(code: string): Promise<Cart> {
+  const { data } = await http.put<Cart>('/cart/coupon', { code })
+  return data
+}
+
+export async function removeCoupon(): Promise<Cart> {
+  const { data } = await http.delete<Cart>('/cart/coupon')
+  return data
+}
+
 export async function removeCartItem(nftId: string, editionId: string): Promise<Cart> {
   const { data } = await http.delete<Cart>(itemPath(nftId, editionId))
   return data

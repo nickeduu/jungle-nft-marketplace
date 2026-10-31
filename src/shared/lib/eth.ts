@@ -39,6 +39,17 @@ export function multiplyEth(value: EthDecimal, quantity: number): EthDecimal {
   return fromWei(toWei(value) * BigInt(quantity))
 }
 
+/** `value` minus `other` (callers ensure the result is not negative). */
+export function subtractEth(value: EthDecimal, other: EthDecimal): EthDecimal {
+  return fromWei(toWei(value) - toWei(other))
+}
+
+/** `percent`% of `value` (integer percentage), rounded down to the wei. */
+export function percentOfEth(value: EthDecimal, percent: number): EthDecimal {
+  if (!Number.isInteger(percent) || percent < 0 || percent > 100) throw new Error(`Invalid percentage: ${percent}`)
+  return fromWei((toWei(value) * BigInt(percent)) / 100n)
+}
+
 export function compareEth(a: EthDecimal, b: EthDecimal): -1 | 0 | 1 {
   const diff = toWei(a) - toWei(b)
   return diff === 0n ? 0 : diff > 0n ? 1 : -1

@@ -40,3 +40,21 @@ export function validatePasswordConfirmation(password: string, confirmation: str
   if (password !== confirmation) return 'As senhas não coincidem.'
   return null
 }
+
+export function validateDisplayName(value: string): string | null {
+  const name = value.trim()
+  if (!name) return 'Informe o nome de exibição.'
+  if (name.length < 2 || name.length > 40) return 'Use de 2 a 40 caracteres.'
+  return null
+}
+
+/** Avatar: PNG, JPEG or WebP image, at most 512 KB (sent as a data URL; kept by the simulated API). */
+export const AVATAR_MAX_BYTES = 512 * 1024
+const AVATAR_DATA_URL = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/
+
+export function validateAvatarDataUrl(value: string): string | null {
+  if (!AVATAR_DATA_URL.test(value)) return 'Use uma imagem PNG, JPEG ou WebP.'
+  // base64: 4 characters per 3 bytes.
+  const bytes = Math.floor(((value.length - value.indexOf(',') - 1) * 3) / 4)
+  return bytes > AVATAR_MAX_BYTES ? 'A imagem deve ter no máximo 512 KB.' : null
+}

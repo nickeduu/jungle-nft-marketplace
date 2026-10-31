@@ -1,3 +1,4 @@
+import type { Coupon } from './checkout'
 import type { EthDecimal, IsoDateTime } from './common'
 
 /**
@@ -48,9 +49,11 @@ export interface Cart {
   /** Total units (header counter). */
   itemCount: number
   subtotalEth: EthDecimal
-  /** Coupons arrive with the checkout quote; "0" until then. */
+  /** Coupon applied to the cart (PUT/DELETE /api/cart/coupon); re-validated by the checkout quote. */
+  coupon: Coupon | null
+  /** subtotal × coupon percentage (rounded down to the wei). */
   discountEth: EthDecimal
-  /** Estimated network fee ("Taxa estimada"); the checkout quote has the final value. "0" when empty. */
+  /** Estimated network fee (Ethereum, "Taxa estimada"); the quote uses the chosen network. "0" when empty. */
   networkFeeEth: EthDecimal
   totalEth: EthDecimal
   /** Not empty and every item available. */

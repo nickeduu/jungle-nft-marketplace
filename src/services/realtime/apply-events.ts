@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { guestCartKeys, nftKeys, privateKeys } from '@/shared/query-keys'
-import type { Cart, FavoritesResponse, FavoritesUpdatedEvent, Nft, NftUpdatedEvent } from '@/shared/contracts'
+import type { Cart, FavoritesResponse, FavoritesUpdatedEvent, Nft, NftUpdatedEvent, Order, OrderUpdatedEvent } from '@/shared/contracts'
 
 /** Remembers recently applied event ids to ignore duplicates (bounded memory). */
 export class EventDeduper {
@@ -67,8 +67,11 @@ export async function invalidateNftLists(queryClient: QueryClient) {
   // Same race as the detail: a first load in flight may predate the event (see above).
   await queryClient.cancelQueries({ queryKey: nftKeys.collections() })
   await queryClient.invalidateQueries({ queryKey: nftKeys.collections() })
-  // Favorites lists carry NFT summaries (price/stock) too.
-  return queryClient.invalidateQueries({ queryKey: privateKeys.all, predicate: (query) => query.queryKey[2] === 'favorites' })
+  // Favorites lists carry NFT summaries (price/stock) too; checkout quotes must be re-priced.
+  return queryClient.invalidateQueries({
+    queryKey: privateKeys.all,
+    predicate: (query) => query.queryKey[2] === 'favorites' || query.queryKey[2] === 'quote',
+  })
 }
 
 const isCartKey = (key: readonly unknown[]) => key[0] === guestCartKeys.all[0] || (key[0] === privateKeys.all[0] && key[2] === 'cart')
@@ -82,6 +85,26 @@ export function invalidateCartsWith(queryClient: QueryClient, nftId: string) {
     predicate: (query) =>
       isCartKey(query.queryKey) && Boolean((query.state.data as Cart | undefined)?.items.some((item) => item.nftId === nftId)),
   })
+}
+
+/**
+ * Private `order.updated`: only for the session's user (the mock routes it by session) and only
+ * when newer than the cached order — duplicates and stale versions never regress a status.
+ * The order is refetched (the API owns the receipt); quotes too, since stock may have changed.
+ * A confirmed order also changed the cart (purchased lines removed).
+ */
+export function applyOrderUpdated(queryClient: QueryClient, event: OrderUpdatedEvent, sessionUserId: string | null) {
+  if (!sessionUserId || event.resource.type !== 'order') return false
+  const orderKey = privateKeys.order(sessionUserId, event.resource.id)
+  const cached = queryClient.getQueryData<Order>(orderKey)
+  if (cached && event.version <= cached.version) return false
+  // Same race as the NFT detail: a first load in flight read the old status; invalidate() alone
+  // would reuse it, so it is cancelled explicitly and fetched again.
+  void queryClient
+    .cancelQueries({ queryKey: orderKey, exact: true })
+    .then(() => queryClient.invalidateQueries({ queryKey: privateKeys.orders(sessionUserId) }))
+  if (event.data.status === 'confirmed') void queryClient.invalidateQueries({ queryKey: privateKeys.cart(sessionUserId) })
+  return true
 }
 
 /** Reconnection: every cart (visitor or user) is reconciled with the API. */

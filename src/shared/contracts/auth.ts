@@ -38,14 +38,20 @@ export interface RegisterRequest {
   password: string
 }
 
+/**
+ * PATCH /api/profile — only the fields sent change. Answers the updated `User`.
+ * Errors: 422 `fieldErrors` (name, username, email, avatarUrl), 409 EMAIL_TAKEN / USERNAME_TAKEN.
+ */
 export interface UpdateProfileRequest {
   name?: string
   username?: string
+  email?: string
   bio?: string
-  /** Data URL or uploaded asset URL. `null` removes the avatar. */
+  /** PNG/JPEG/WebP data URL (≤ 512 KB). `null` removes the avatar. */
   avatarUrl?: string | null
 }
 
+/** POST /api/profile/password → 204. Wrong current password → 422 `fieldErrors.currentPassword`. */
 export interface ChangePasswordRequest {
   currentPassword: string
   newPassword: string

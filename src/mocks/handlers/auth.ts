@@ -2,8 +2,15 @@ import { http, HttpResponse } from 'msw'
 import { hashPassword, newSalt, verifyPassword } from '@/mocks/auth/password'
 import { applyScenario, errorResponse } from '@/mocks/scenarios'
 import { sessionsTable, toPublicUser, usersTable } from '@/mocks/store/db'
-import type { LoginRequest, RegisterRequest, Session, User } from '@/shared/contracts'
-import { validateEmail, validateNewPassword, validateUsername } from '@/shared/lib/account-rules'
+import type { ChangePasswordRequest, LoginRequest, RegisterRequest, Session, UpdateProfileRequest, User } from '@/shared/contracts'
+import {
+  normalizeUsername,
+  validateAvatarDataUrl,
+  validateDisplayName,
+  validateEmail,
+  validateNewPassword,
+  validateUsername,
+} from '@/shared/lib/account-rules'
 import type { UserRecord } from '@/mocks/fixtures/users'
 
 const base = import.meta.env.VITE_API_BASE_URL
@@ -137,5 +144,71 @@ export const authHandlers = [
     if (failure) return failure
     if (auth instanceof Response) return auth
     return HttpResponse.json<User>(toPublicUser(auth.user))
+  }),
+
+  /** Edits the session user's data; only the fields sent change. Persisted (survives refresh). */
+  http.patch(`${base}/profile`, async ({ request }) => {
+    const auth = authenticate(request)
+    if (auth instanceof Response) return auth
+    const body = await readJson<UpdateProfileRequest>(request)
+    const failure = await applyScenario('profile-write')
+    if (failure) return failure
+
+    const patch: Partial<UserRecord> = {}
+    const fieldErrors: Record<string, string> = {}
+    if (body.name !== undefined) {
+      const error = validateDisplayName(asText(body.name))
+      if (error) fieldErrors.name = error
+      else patch.name = asText(body.name).trim()
+    }
+    if (body.username !== undefined) {
+      const error = validateUsername(asText(body.username))
+      if (error) fieldErrors.username = error
+      else patch.username = normalizeUsername(asText(body.username))
+    }
+    if (body.email !== undefined) {
+      const error = validateEmail(asText(body.email))
+      if (error) fieldErrors.email = error
+      else patch.email = asText(body.email).trim().toLowerCase()
+    }
+    if (body.avatarUrl !== undefined) {
+      const error = body.avatarUrl === null ? null : validateAvatarDataUrl(asText(body.avatarUrl))
+      if (error) fieldErrors.avatarUrl = error
+      else patch.avatarUrl = body.avatarUrl
+    }
+    if (body.bio !== undefined) patch.bio = asText(body.bio).slice(0, 280)
+    if (Object.keys(fieldErrors).length > 0) return errorResponse(422, 'VALIDATION_ERROR', 'Revise os campos destacados.', fieldErrors)
+
+    const emailOwner = patch.email ? usersTable.findByEmail(patch.email) : undefined
+    if (emailOwner && emailOwner.id !== auth.user.id) {
+      return errorResponse(409, 'EMAIL_TAKEN', 'Este e-mail já está cadastrado.', { email: 'Este e-mail já está cadastrado.' })
+    }
+    const usernameOwner = patch.username ? usersTable.findByUsername(patch.username) : undefined
+    if (usernameOwner && usernameOwner.id !== auth.user.id) {
+      return errorResponse(409, 'USERNAME_TAKEN', 'Este nome de usuário já está em uso.', { username: 'Este nome de usuário já está em uso.' })
+    }
+    const updated = usersTable.update(auth.user.id, patch)
+    return updated ? HttpResponse.json<User>(toPublicUser(updated)) : errorResponse(404, 'NOT_FOUND', 'Usuário não encontrado.')
+  }),
+
+  /** Changes the password (stored as a new salted hash). The current session stays valid. */
+  http.post(`${base}/profile/password`, async ({ request }) => {
+    const auth = authenticate(request)
+    if (auth instanceof Response) return auth
+    const body = await readJson<ChangePasswordRequest>(request)
+    const failure = await applyScenario('profile-write')
+    if (failure) return failure
+    const current = asText(body.currentPassword)
+    const next = asText(body.newPassword)
+    const fieldErrors: Record<string, string> = {}
+    if (!current) fieldErrors.currentPassword = 'Informe a senha atual.'
+    else if (!(await verifyPassword(current, auth.user.passwordSalt, auth.user.passwordHash))) fieldErrors.currentPassword = 'Senha atual incorreta.'
+    const policy = validateNewPassword(next)
+    if (policy) fieldErrors.newPassword = policy
+    else if (next === current) fieldErrors.newPassword = 'A nova senha deve ser diferente da atual.'
+    if (Object.keys(fieldErrors).length > 0) return errorResponse(422, 'VALIDATION_ERROR', 'Revise os campos destacados.', fieldErrors)
+    const salt = newSalt()
+    usersTable.update(auth.user.id, { passwordSalt: salt, passwordHash: await hashPassword(next, salt) })
+    return new HttpResponse(null, { status: 204 })
   }),
 ]

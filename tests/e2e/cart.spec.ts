@@ -477,8 +477,9 @@ test.describe('Carrinho: interface e checkout', () => {
     await expect(page).toHaveURL(/\/checkout$/)
     await expect(page.getByTestId('checkout-items')).toContainText('2 × 1.63 ETH')
     await expect(page.getByTestId('checkout-total')).toHaveText('3.276 ETH')
-    // Nothing is presented as purchased.
-    await expect(page.getByRole('button', { name: 'Confirmar compra' })).toHaveAttribute('aria-disabled', 'true')
+    // Etapa 6: confirming is real now; just opening the checkout creates no order.
+    await expect(page.getByRole('button', { name: 'Confirmar compra' })).toBeVisible()
+    await expect(page).toHaveURL(/\/checkout$/)
   })
 
   test('checkout com carrinho vazio redireciona para o carrinho', async ({ page }) => {

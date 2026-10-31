@@ -1,22 +1,25 @@
 import { http, HttpResponse } from 'msw'
+import { couponFixtures } from '@/mocks/fixtures/checkout'
 import { applyScenario, errorResponse } from '@/mocks/scenarios'
-import { cartsTable, nftsTable, type CartRecord, type StoredCartItem } from '@/mocks/store/db'
+import { cartsTable, feesTable, nftsTable, type CartRecord, type StoredCartItem } from '@/mocks/store/db'
 import {
   GUEST_CART_HEADER,
   type AddCartItemRequest,
+  type ApplyCouponRequest,
   type Cart,
+  type Coupon,
   type CartItem,
   type MergeCartRequest,
   type MergeCartResponse,
   type UpdateCartItemRequest,
 } from '@/shared/contracts'
-import { addEth, compareEth, multiplyEth } from '@/shared/lib/eth'
+import { addEth, compareEth, multiplyEth, percentOfEth, subtractEth } from '@/shared/lib/eth'
 import { authenticate, bearerToken } from './auth'
 
 const base = import.meta.env.VITE_API_BASE_URL
 
-/** Figma "Taxa estimada" (desktop-03 / mobile-03). The checkout quote computes the real fee per network. */
-export const ESTIMATED_NETWORK_FEE_ETH = '0.016'
+/** The cart shows the Ethereum fee as an estimate (Figma "Taxa estimada"); the quote uses the chosen network. */
+const ESTIMATE_NETWORK = 'ethereum'
 const MAX_LINE_QUANTITY = 100
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -41,7 +44,10 @@ function resolveOwner(request: Request): CartOwner | Response | null {
   return null
 }
 
-const editionOf = (nftId: string, editionId: string) => {
+export const findCoupon = (code: string): Coupon | undefined => couponFixtures.find((coupon) => coupon.code === code.trim().toUpperCase())
+export const isExpired = (coupon: Coupon, now = Date.now()) => Date.parse(coupon.expiresAt) <= now
+
+export const editionOf = (nftId: string, editionId: string) => {
   const nft = nftsTable.findById(nftId)
   const edition = nft?.editions.find((e) => e.id === editionId)
   return nft && edition ? { nft, edition, maxQuantity: Math.max(0, Math.min(edition.available, edition.maxPerOrder)) } : undefined
@@ -52,7 +58,7 @@ const editionOf = (nftId: string, editionId: string) => {
  * stock fell below a quantity the quantity is reduced (remembering the previous one for the
  * notice). Sold-out lines are kept (status "unavailable") so the user sees what happened.
  */
-function reconcile(ownerKey: string): CartRecord {
+export function reconcile(ownerKey: string): CartRecord {
   const record = cartsTable.get(ownerKey)
   let changed = false
   const items = record.items.flatMap((item): StoredCartItem[] => {
@@ -99,16 +105,18 @@ function toCart(record: CartRecord, owner: Cart['owner']): Cart {
   })
   // Exact decimal arithmetic (BigInt wei): no float rounding in any total.
   const subtotalEth = addEth('0', ...items.map((item) => item.lineTotalEth))
-  const discountEth = '0'
-  const networkFeeEth = items.length > 0 ? ESTIMATED_NETWORK_FEE_ETH : '0'
+  const coupon = record.couponCode ? (findCoupon(record.couponCode) ?? null) : null
+  const discountEth = coupon ? percentOfEth(subtotalEth, coupon.percentOff) : '0'
+  const networkFeeEth = items.length > 0 ? feesTable.get(ESTIMATE_NETWORK) : '0'
   return {
     owner,
     items,
     itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
     subtotalEth,
+    coupon,
     discountEth,
     networkFeeEth,
-    totalEth: addEth(subtotalEth, networkFeeEth),
+    totalEth: addEth(subtractEth(subtotalEth, discountEth), networkFeeEth),
     checkoutReady: items.length > 0 && items.every((item) => item.status === 'ok'),
     version: record.version,
     updatedAt: record.updatedAt,
@@ -232,6 +240,29 @@ export const cartHandlers = [
     return HttpResponse.json<Cart>(toCart(cartsTable.save(owner.key, []), owner.kind))
   }),
 
+  /** Applies a coupon (README: invalid or expired codes are refused). The quote validates it again. */
+  http.put(`${base}/cart/coupon`, async ({ request }) => {
+    const owner = writableOwner(request)
+    if (owner instanceof Response) return owner
+    const { code } = await readJson<ApplyCouponRequest>(request)
+    const failure = await applyScenario('cart-write')
+    if (failure) return failure
+    const coupon = typeof code === 'string' && code.trim() ? findCoupon(code) : undefined
+    if (!coupon) return errorResponse(422, 'COUPON_INVALID', 'Cupom inválido.', { code: 'Cupom inválido.' })
+    if (isExpired(coupon)) return errorResponse(422, 'COUPON_EXPIRED', 'Este cupom expirou.', { code: 'Este cupom expirou.' })
+    const record = reconcile(owner.key)
+    return HttpResponse.json<Cart>(toCart(cartsTable.save(owner.key, record.items, coupon.code), owner.kind))
+  }),
+
+  http.delete(`${base}/cart/coupon`, async ({ request }) => {
+    const owner = writableOwner(request)
+    if (owner instanceof Response) return owner
+    const failure = await applyScenario('cart-write')
+    if (failure) return failure
+    const record = reconcile(owner.key)
+    return HttpResponse.json<Cart>(toCart(cartsTable.save(owner.key, record.items, null), owner.kind))
+  }),
+
   /**
    * Right after login: the visitor's lines join the user's cart (README: "preservar os itens do
    * visitante ao autenticar"). Same NFT + edition → quantities add up, limited to the current
@@ -269,9 +300,24 @@ export const cartHandlers = [
       if (existing) items[index] = merged
       else items.push(merged)
     }
-    const saved = cartsTable.save(userKey, items)
+    const saved = cartsTable.save(userKey, items, cartsTable.get(userKey).couponCode ?? guest.couponCode ?? null)
     cartsTable.delete(guestKey)
     const mergedUnits = guest.items.reduce((sum, line) => sum + line.quantity, 0)
     return HttpResponse.json<MergeCartResponse>({ cart: toCart(saved, 'user'), mergedUnits })
   }),
 ]
+
+/**
+ * After a confirmed order: removes exactly the purchased quantities (lines added or increased
+ * after the quote stay) and the coupon that was used. Failed/rejected orders never call this.
+ */
+export function removePurchased(userId: string, lines: Array<{ nftId: string; editionId: string; quantity: number }>) {
+  const key = `user:${userId}`
+  const record = cartsTable.get(key)
+  const items = record.items.flatMap((item) => {
+    const bought = lines.find((line) => line.nftId === item.nftId && line.editionId === item.editionId)?.quantity ?? 0
+    const remaining = item.quantity - bought
+    return remaining > 0 ? [{ ...item, quantity: remaining }] : []
+  })
+  cartsTable.save(key, items, null)
+}

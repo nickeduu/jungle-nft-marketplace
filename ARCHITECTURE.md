@@ -19,7 +19,9 @@ src/
     favorites/             lista de interesse, FavoriteButton, mutation otimista
     profile/               perfil e layout da área "Meu perfil"
     cart/                  carrinho (visitante ou conta), mesclagem no login, contador
-    checkout/              entrada do checkout (guarda + revisão; pagamento na próxima etapa)
+    checkout/              pagamento: cotação, carteira/rede, pedido idempotente (tentativa persistida)
+    orders/                página do pedido (pendente/confirmado/recusado) e recibo do snapshot
+    wallets/               carteiras do perfil + conexão simulada
     nft-detail/            detalhe do NFT: galeria, edições (?edition=), quantidade, avaliações, compartilhamento, "Mais desta coleção"
   services/
     api/http.ts            instância Axios + normalização de erros (ApiError)
@@ -36,12 +38,12 @@ src/
     store/db.ts            "banco" do mock (persistência + reset)
     scenarios/             latência e falhas configuráveis
     devtools/              painel de simulação (apenas com mocks ativos)
-tests/e2e/                 Playwright (foundation, catalog, nft-detail, auth, favorites, cart)
+tests/e2e/                 Playwright (foundation, catalog, nft-detail, auth, favorites, cart, checkout)
 docs/figma-references/     capturas do Figma + INDEX.md (tokens extraídos)
 scripts/lighthouse.mjs     auditoria reproduzível
 ```
 
-Pastas das demais features (`wallets`, `orders`) serão criadas quando houver código.
+
 
 ## 2. Responsabilidades
 
@@ -69,7 +71,7 @@ Controle /api/__mock → store do mock → emitToAll('nft.updated') → WebSocke
 - Valores em ETH: `EthDecimal` (string decimal, até 18 casas). Aritmética em `shared/lib/eth.ts` com `BigInt` em wei; nunca `Number`.
 - Quantidades: inteiros.
 - `Nft` (detalhe): `tokenId`, `description` (resumo) e `longDescription` (aba Detalhes), `attributes[]`, `rating { average, count }` (agregado das avaliações), `contract { address, standard }`, `royaltyPercent`, `images[]` (a primeira é a capa das listagens) e `editions[]` na ordem de exibição. Edição: `supply: null` = edição aberta; limite de compra = `min(available, maxPerOrder)`.
-- Erros: `{ error: { code, message, fieldErrors? } }` com códigos `VALIDATION_ERROR`, `UNAUTHENTICATED`, `SESSION_EXPIRED`, `FORBIDDEN`, `NOT_FOUND`, `EMAIL_TAKEN`, `AVAILABILITY_CONFLICT`, `PRICE_CHANGED`, `QUOTE_EXPIRED`, `COUPON_INVALID`, `COUPON_EXPIRED`, `IDEMPOTENCY_CONFLICT`, `PAYMENT_REJECTED`, `TRANSIENT_FAILURE` e `USERNAME_TAKEN`. Falhas de rede/timeout viram `NETWORK_ERROR`/`TIMEOUT` no cliente.
+- Erros: `{ error: { code, message, fieldErrors? } }` com códigos `VALIDATION_ERROR`, `UNAUTHENTICATED`, `SESSION_EXPIRED`, `FORBIDDEN`, `NOT_FOUND`, `EMAIL_TAKEN`, `AVAILABILITY_CONFLICT`, `PRICE_CHANGED`, `QUOTE_EXPIRED`, `COUPON_INVALID`, `COUPON_EXPIRED`, `IDEMPOTENCY_CONFLICT`, `PAYMENT_REJECTED`, `TRANSIENT_FAILURE`, `USERNAME_TAKEN`, `WALLET_REJECTED` e `WALLET_DISCONNECTED`. Falhas de rede/timeout viram `NETWORK_ERROR`/`TIMEOUT` no cliente.
 
 ### REST (planejado; ✅ = implementado)
 
@@ -79,10 +81,11 @@ Controle /api/__mock → store do mock → emitToAll('nft.updated') → WebSocke
 | NFTs | ✅ `GET /api/nfts?q&tab&collection&category*&network*&minPriceEth&maxPriceEth&availableOnly&sort&page&pageSize` → `Paginated<NftSummary>` (`*` = chave repetida; `collection` = nome exato, usado por "Mais desta coleção"; inválidos → 422 com `fieldErrors`); ✅ `GET /api/nfts/facets` → `NftFacets` (coleções/redes com contagem, faixa de preço); ✅ `GET /api/nfts/highlights` → `NftSummary[]`; ✅ `GET /api/nfts/:id` → `Nft`; ✅ `GET /api/nfts/:id/reviews` → `NftReview[]` (somente leitura, fixtures; 404 se o NFT não existe) |
 | Favoritos | ✅ `GET /api/favorites`, ✅ `PUT /api/favorites/:nftId` (404 se o NFT não existe), ✅ `DELETE /api/favorites/:nftId` → `FavoritesResponse { nftIds, items: NftSummary[], version }`; sempre do usuário da sessão (não há id de usuário na URL); 401 sem sessão |
 | Carrinho | ✅ `GET /api/cart` → `Cart`; ✅ `POST /api/cart/items` `{ nftId, editionId, quantity }` (soma à linha existente; 201 nova linha / 200 somada); ✅ `PATCH /api/cart/items/:nftId/:editionId` `{ quantity }` (absoluta); ✅ `DELETE /api/cart/items/:nftId/:editionId` (idempotente); ✅ `DELETE /api/cart` (esvaziar); ✅ `POST /api/cart/merge` `{ guestCartId }` → `{ cart, mergedUnits }` (exige sessão). Dono: usuário da sessão, ou visitante pelo cabeçalho `X-Guest-Cart` (UUID). Erros: 422 quantidade inválida (inteiro 1–100), 404 NFT/edição/linha inexistente, 409 `AVAILABILITY_CONFLICT` (esgotada ou acima de `min(available, maxPerOrder)`, considerando o que já está no carrinho), 401 com token inválido/expirado (nunca cai silenciosamente para o carrinho de visitante) |
-| Cotação | `POST /api/quotes` `{ couponCode?, network }` → `Quote` (com `fingerprint`) |
-| Pedidos | `POST /api/orders` + header `Idempotency-Key`, `GET /api/orders/:id` |
-| Perfil | ✅ `GET /api/profile` → `User`; `PATCH /api/profile`, `POST /api/profile/password` (próxima etapa) |
-| Carteiras | `GET /api/wallets`, `PUT /api/wallets/:slot` (`primary`/`secondary`) |
+| Cupom (no carrinho) | ✅ `PUT /api/cart/coupon` `{ code }` → `Cart` (422 `COUPON_INVALID`/`COUPON_EXPIRED`); ✅ `DELETE /api/cart/coupon` |
+| Cotação | ✅ `POST /api/quotes` `{ network }` → `Quote` (linhas com preço atual, cupom revalidado, desconto, taxa da rede, total, `fingerprint`, validade 10 min); 422 carrinho vazio; 409 `AVAILABILITY_CONFLICT`/`COUPON_*` |
+| Pedidos | ✅ `POST /api/orders` + `Idempotency-Key` `{ quoteId, quoteFingerprint, walletId, network, buyer }` → 201 `Order` (`pending`); mesma chave + mesmo corpo → 200 mesmo pedido; mesma chave + outro corpo → 409 `IDEMPOTENCY_CONFLICT`; cotação desatualizada → 409 `PRICE_CHANGED`/`QUOTE_EXPIRED`; carteira desconectada → 409 `WALLET_DISCONNECTED`; 422 com `fieldErrors` (`buyer.fullName`, `buyer.email`, `network`, `walletId`). ✅ `GET /api/orders?status=` → `OrderSummary[]`; ✅ `GET /api/orders/:id` → `Order` (de outro usuário → 404) |
+| Perfil | ✅ `GET /api/profile` → `User`; ✅ `PATCH /api/profile` `{ name?, username?, email?, avatarUrl? }` → `User` (422 `fieldErrors`; 409 `EMAIL_TAKEN`/`USERNAME_TAKEN`; avatar = data URL PNG/JPEG/WebP ≤ 512 KB, `null` remove); ✅ `POST /api/profile/password` `{ currentPassword, newPassword }` → 204 (senha atual incorreta → 422 `fieldErrors.currentPassword`; novo hash com novo salt; a sessão atual continua válida) |
+| Carteiras | ✅ `GET /api/wallets` → `{ wallets, connectedWalletId }`; ✅ `PUT /api/wallets/:slot` (`primary`/`secondary`; 422 com `fieldErrors`); ✅ `POST /api/wallets/:slot/connect` (403 `WALLET_REJECTED` no cenário de recusa); ✅ `POST /api/wallets/disconnect` |
 
 ### Eventos Socket.IO
 
@@ -92,7 +95,7 @@ Envelope: `{ eventId, resource: { type, id }, version, occurredAt, data }`.
 | --- | --- |
 | `nft.updated` (público) | `{ editions: [{ id, priceEth, available }] }` |
 | `favorites.updated` (privado, `resource.id` = id do usuário) | `{ nftIds }` |
-| `order.updated` | `{ status, txHash, rejectionReason }` |
+| `order.updated` (privado, `resource.id` = id do pedido) | `{ status, txHash, rejectionReason }` |
 
 ## 5. Estratégia de dados
 
@@ -159,10 +162,21 @@ A URL é a fonte de verdade (refresh, histórico e links diretos). Exemplo:
 - **Contador:** unidades totais (`itemCount`) no ícone do header e da navegação inferior, a partir da mesma query (visitante ou usuário); segue adição, alteração, remoção, refresh e troca de sessão.
 - **Checkout (`/checkout`):** guarda exige sessão e **rebusca** o carrinho na API (`fetchQuery`, `staleTime: 0`); vazio ou com item esgotado → redireciona para `/cart`. A página mostra a revisão e "Confirmar compra" indisponível (dados do comprador, carteira, cotação e pedido são da próxima etapa). `DELETE /api/cart` já existe para limpar após pedido confirmado.
 
+### Checkout e pedidos (Etapa 6)
+
+- **Cotação = referência:** `POST /api/quotes` precifica o carrinho do usuário na rede escolhida (preço atual, cupom revalidado, desconto `floor(subtotal × %)` em wei, taxa da rede) e devolve um `fingerprint` (SHA-256 de linhas + cupom + rede + taxa + total). A query da cotação tem `staleTime: 0` e é invalidada por `nft.updated`. A página guarda, por rede, o fingerprint que o usuário revisou: se a cotação muda (preço, estoque, cupom ou taxa), aparece o aviso e "Confirmar compra" fica bloqueado até "Revisei os novos valores". O servidor recalcula a cotação ao criar o pedido e recusa (`PRICE_CHANGED`) se o fingerprint enviado não é mais o atual — mudanças sem evento (ex.: taxa) também são pegas.
+- **Idempotência:** cada tentativa de compra é `{ key: UUID, body }`, gravada em `localStorage` (por usuário) **antes** do envio; o mesmo corpo reaproveita a mesma chave. Resposta definitiva (pedido ou recusa) apaga a tentativa; sem resposta (timeout de 5 s, rede, reload, aba fechada) ela fica e a página oferece "Verificar pedido", que reenvia a mesma chave — o servidor devolve o pedido já criado. O guarda de `/checkout` deixa entrar com uma tentativa pendente mesmo que o pedido já tenha esvaziado o carrinho. Cliques repetidos: guarda síncrona (`useRef`) + `aria-busy`; ela só é liberada em erro — após um sucesso a página está saindo, e um clique nesse intervalo começaria uma tentativa nova (a respondida já foi apagada) e criaria um segundo pedido (bug encontrado pelo teste de cliques repetidos). Servidor: `idempotency['<userId>:<key>'] = { orderId, bodyHash }`.
+- **Estados:** `pending` → `confirmed` | `rejected` (terminais; `version` incrementa a cada mudança). O resultado do pagamento simulado é decidido na criação (cenário) e persistido com `resolvesAt`; timers do mock agendam a resolução, e como o mock vive na página, pedidos vencidos são resolvidos na próxima leitura (`settleIfDue`) e os pendentes são reagendados quando o mock inicia — refresh, aba reaberta e reconexão recuperam o pedido sem criar outro.
+- **Confirmação:** só a API decide; a página do pedido mostra "Aguardando confirmação" até receber o estado (GET ou `order.updated`). Na confirmação o mock dá baixa no estoque (emite `nft.updated`) e remove do carrinho **apenas** as quantidades compradas (linhas adicionadas depois permanecem) e o cupom usado. Se o estoque não cobre mais o pedido, ele é recusado. Recusa/falha não toca no carrinho.
+- **Recibo:** renderiza o snapshot do pedido (linhas, cupom, valores, carteira, rede); mudanças posteriores no catálogo não o alteram. `txHash` é aleatório e o "explorador" é um painel interno marcado como simulado (nenhum link externo inexistente).
+- **Pedido resolvido sem a página saber:** com a página aberta, o timer do mock resolve o pagamento e emite `order.updated` na hora (tela atualiza sem refresh). Após um reload, o mock reagenda os pagamentos ao iniciar — antes de o socket da sessão conectar; um evento emitido nesse intervalo não chega a ninguém. Por isso **toda conexão** (não só reconexão) de um socket autenticado reconcilia os pedidos do usuário com a API. Testes: pedido resolvido com a página aberta e refresh durante o pagamento, ambos sem novo reload (marcador na `window`).
+- **Tempo real:** `order.updated` é privado (`emitToUser`), deduplicado por `eventId` e aplicado só se `version` > versão em cache; a consulta do pedido é **cancelada e refeita** (mesma corrida do detalhe: um primeiro carregamento em voo com o estado antigo venceria um `invalidate` simples — encontrada pelo teste). Confirmado → carrinho invalidado. Reconexão → invalida os dados privados (pedido reconciliado pela API).
+- **Carteiras:** principal e secundária por usuário (`/wallets`, formulário com validação compartilhada `shared/lib/wallet-rules.ts`: endereço 0x+40 hex em Ethereum/Polygon, base58 em Solana). "Conexão" simulada por usuário na API (`connectedWalletId`); o conector pode recusar; alterar a carteira ou o controle `/wallets/disconnect` exige reconectar. O pedido exige carteira conectada e na mesma rede escolhida.
+- **Dados do colecionador:** nome completo e e-mail, pré-preenchidos do perfil e validados no cliente e na API.
+
 ### Planejado (próximas etapas)
 - **Pedidos:** `Idempotency-Key` gerada uma vez por tentativa de checkout e guardada em `sessionStorage`; reenvio após timeout recupera o mesmo pedido; mesma chave com corpo diferente → 409. Pedido `pending` é recuperado após refresh via `GET /api/orders/:id` e por `order.updated`; `confirmed`/`rejected` são terminais.
 - **Cotação:** checkout envia `quoteFingerprint`; se preço/estoque/cupom mudou, API responde 409 `PRICE_CHANGED`/`AVAILABILITY_CONFLICT` com nova cotação e a UI exige nova confirmação.
-- **Checkout:** cotação com `fingerprint` a partir do carrinho (preço/estoque/cupom/taxa por rede), cupons, dados do comprador, carteira/rede, pedido idempotente, `order.updated` e remoção apenas dos itens comprados (`DELETE /api/cart/items/...` ou endpoint dedicado).
 - **Perfil:** edição de dados/avatar/senha e carteiras usam a mesma área (`ProfileLayout`) e chaves `privateKeys`.
 
 ## 6. MSW + Socket.IO
@@ -202,7 +216,9 @@ A URL é a fonte de verdade (refresh, histórico e links diretos). Exemplo:
   - Desvios do detalhe: (1) miniaturas também no mobile (abaixo da imagem; o frame mobile mostra só uma imagem) para a galeria ser operável por toque e teclado; (2) carrossel "Mais desta coleção" com botões anterior/próximo e rolagem horizontal em vez dos pontos do Figma; (3) "Criador" adicionado às informações; (4) os rótulos "Contrato"/"Direitos autorais" do Figma aparecem trocados em relação ao conteúdo — aqui "Contrato" mostra endereço e padrão, "Direitos autorais" o percentual; (5) aviso visível "Indisponível nesta versão" sob os botões de compra; (6) total (preço × quantidade) exibido também no desktop; (7) ícones de LinkedIn/X como texto ("in", "X") — o lucide não traz marcas; compartilhar nativo (Web Share API) e "Copiar link" adicionados.
   - Acessibilidade: galeria no padrão WAI-ARIA de carrossel com abas (Radix Tabs: setas, Home/End), zoom em diálogo com foco preso e devolvido ao fechar, edições como rádios nativos (esgotadas desabilitadas e riscadas — não só por cor), quantidade com `aria-disabled` (o foco não se perde no limite), anúncios `aria-live` para tempo real, ajuste de estoque, ações indisponíveis e cópia de link.
   - Artes: 8 placeholders SVG próprios (`public/images/nfts/art-01..08.svg`, paleta + acessório), 4 por NFT, distintos dentro de cada coleção; imagem que falha ao carregar cai para `placeholder-nft.svg`.
-- **Carrinho (Etapa 5):** estrutura do Figma desktop-03 (trilha, tabela NFTs/Preço/Quantidade/Total/lixeira, "Resumo da carteira" à direita com cupom, subtotal, desconto, taxa estimada, total, "Conectar e finalizar" e "Continuar explorando") e mobile-03 (voltar + "Carrinho de NFTs", cards com imagem, nome, edição, total da linha e seletor). Desvios: coluna "Edições" do Figma rotulada "Quantidade" (é o que ela controla); resumo no mobile ao fim da lista, não fixo (com cupom e cinco linhas ele cobriria a lista e a navegação inferior); "Colecionadores também viram" não implementado nesta etapa; campo de cupom visível e indisponível (cupons na próxima etapa); item esgotado continua somando no subtotal até ser removido (o checkout fica bloqueado).
+- **Checkout e pedido (Etapa 6):** pagamento segue a composição do Figma desktop-04 (perfil do colecionador à esquerda; à direita NFTs, valores, "Carteira e rede" e "Confirmar compra") e mobile-04 ("Pagamento com carteira", carteiras como opções, total, confirmar). Desvios: o formulário do colecionador tem só nome completo e e-mail (os demais campos do Figma — endereço, ENS, código de indicação, observação — não têm comportamento definido no README); as opções WalletConnect/MetaMask/Coinbase aparecem como tipo de cada carteira cadastrada (conectar = conector simulado) em vez de lista separada; o recibo (desktop-05, modal) é uma página `/orders/:id` (sobrevive a refresh e tem URL própria); "Ver no Etherscan" vira "Ver no explorador (simulado)". Carteiras (desktop-09): apelido, tipo, rede e endereço (sem nome de exibição/ENS/código de indicação).
+- **Carrinho (Etapa 5):** estrutura do Figma desktop-03 (trilha, tabela NFTs/Preço/Quantidade/Total/lixeira, "Resumo da carteira" à direita com cupom, subtotal, desconto, taxa estimada, total, "Conectar e finalizar" e "Continuar explorando") e mobile-03 (voltar + "Carrinho de NFTs", cards com imagem, nome, edição, total da linha e seletor). Desvios: coluna "Edições" do Figma rotulada "Quantidade" (é o que ela controla); resumo no mobile ao fim da lista, não fixo (com cupom e cinco linhas ele cobriria a lista e a navegação inferior); "Colecionadores também viram" não implementado nesta etapa; item esgotado continua somando no subtotal até ser removido (o checkout fica bloqueado).
+- **Perfil (Etapa 6):** desktop-08 — resumo (avatar, nome, @usuário, dados) seguido de "Editar dados" (nome de exibição, nome de usuário, e-mail, avatar com Alterar/Remover e Salvar) e "Alterar senha" (atual, nova, confirmar). Campos do Figma sem comportamento definido no README (nome ENS, apelido da carteira no perfil) não foram incluídos; o avatar é guardado como data URL no banco simulado (`localStorage`), por isso o limite de 512 KB.
 - **Conta (Etapa 4):** login e cadastro seguem os cartões do Figma (mobile-05/06; desktop-06/07 com abas "Entrar | Criar conta"), mas como **páginas** (`/login`, `/register`) e não modal sobre a Início — link direto, `redirect` e botão voltar funcionam. Rótulos visíveis acima dos campos (o Figma só tem placeholder). Login social e "Esqueceu a senha?" visíveis como indisponíveis (fora do escopo). O cadastro usa "Nome de usuário" como no Figma; o nome de exibição começa igual a ele. Perfil (desktop-08) somente leitura nesta etapa; o menu mostra Dados do perfil, Carteiras (indisponível), Lista de interesse e Sair — Atividade, Ofertas, Arquivos baixados e Suporte estão fora do escopo do README e foram omitidos. Coração nos cards (Figma mobile-01) também no desktop; selo "Esgotado" movido para o canto inferior. Toasts: topo no desktop, base no mobile (acima da navegação) e nunca bloqueiam toques.
 - Desvios conhecidos: (1) busca no topo da coluna do catálogo no desktop (o Figma mostra só um ícone no header); (2) "Somente disponíveis" e "Limpar filtros" adicionados à sidebar; (3) "Oferta limitada" → "Edição limitada" (a API não tem promoções); (4) ainda não implementados: banners promocionais e "Diário da Cunhagem" (editorial, fora do escopo do README), preço "de/por", botão central da bottom nav, contador do carrinho; (5) ações de etapas futuras (pagamento, Carteiras), newsletter e páginas fora do escopo (Criadores, Aprenda, ajuda, redes sociais) aparecem desabilitadas ou como texto, sem simular sucesso; (6) **artes dos NFTs são placeholders** (variações SVG geradas, ver acima) — os assets originais não estão disponíveis (as capturas não podem ser recortadas como asset); (7) no mobile, nome/preço ficam dentro da caixa do card (no Figma ficam abaixo dela).
 
@@ -235,8 +251,10 @@ Hoje aparecem desabilitadas (sem simular sucesso). Todas usam contratos já defi
 | Detalhe do NFT | ✅ Etapa 3 (layout, galeria, edições na URL, quantidade/estoque, avaliações, compartilhamento). Falta ligar Comprar/Favoritar/Carrinho às mutations | Login, Carrinho |
 | Login / Cadastro | ✅ Etapa 4 (sessão na API, validação, conflito de e-mail/usuário, retorno ao fluxo anterior, expiração). Fora do escopo: login social e recuperação de senha (visíveis como indisponíveis) | — |
 | Favoritos | ✅ Etapa 4 (card, detalhe, lista de interesse, otimista com rollback, por usuário, sincronizado via Socket.IO) | — |
-| Carrinho | ✅ Etapa 5 (itens por edição, quantidades vs disponibilidade, resumo da API, persistência, carrinho de visitante + mesclagem no login, contador, `nft.updated`). Falta: cupom (com a cotação) | — |
-| Pagamento e confirmação | Cotação com `fingerprint`, carteiras/rede, idempotência, pendente/confirmado/recusado, `order.updated`, recibo como snapshot | Carrinho, Carteiras |
-| Perfil / Carteiras | Perfil somente leitura ✅ (Etapa 4); falta edição de dados, avatar, senha e carteiras principal/secundária | — |
+| Carrinho | ✅ Etapas 5–6 (itens por edição, quantidades vs disponibilidade, cupom, resumo da API, persistência, carrinho de visitante + mesclagem no login, contador, `nft.updated`) | — |
+| Pagamento e confirmação | ✅ Etapa 6 (cotação com fingerprint, cupons, carteiras/rede, conexão simulada, idempotência, pendente/confirmado/recusado, `order.updated`, recibo snapshot) | — |
+| Perfil / Carteiras | ✅ Etapa 6 (edição de nome/usuário/e-mail, avatar, senha, carteiras principal/secundária; validação no cliente e na API; persistência) | — |
+| Regressão visual (README §9) | **Pendente:** `toHaveScreenshot` de início, detalhe, carrinho e pagamento, com baselines versionadas e dados estáveis (gerar e validar sempre no mesmo SO/fontes) | — |
+| Deploy (README §12) | **Pendente** (obrigatório): host com fallback SPA e `mockServiceWorker.js` na raiz | — |
 | Sessão e tempo real | ✅ Etapa 4 (socket por sessão, eventos privados por usuário, limpeza de cache no logout/troca). `order.updated` privado: etapa de pedidos | — |
 | Lighthouse oficial | 3 medições × 2 páginas × 2 perfis com relatórios versionados, em ambiente controlado | — |

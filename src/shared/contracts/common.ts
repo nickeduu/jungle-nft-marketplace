@@ -30,6 +30,8 @@ export type ApiErrorCode =
   | 'COUPON_EXPIRED'
   | 'IDEMPOTENCY_CONFLICT'
   | 'PAYMENT_REJECTED'
+  | 'WALLET_REJECTED'
+  | 'WALLET_DISCONNECTED'
   | 'TRANSIENT_FAILURE'
 
 /** Error body returned by every REST endpoint on 4xx/5xx. */

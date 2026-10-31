@@ -1,7 +1,15 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { nftKeys, privateKeys } from '@/shared/query-keys'
-import { applyFavoritesUpdated, applyNftUpdated, EventDeduper, invalidateCarts, invalidateCartsWith, invalidateNftLists } from './apply-events'
+import {
+  applyFavoritesUpdated,
+  applyNftUpdated,
+  applyOrderUpdated,
+  EventDeduper,
+  invalidateCarts,
+  invalidateCartsWith,
+  invalidateNftLists,
+} from './apply-events'
 import { createRealtimeSocket } from './socket'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
@@ -41,6 +49,9 @@ export function RealtimeProvider({ session, children }: { session: RealtimeSessi
 
     socket.on('connect', () => {
       setStatus('connected')
+      // Private events emitted before this session's socket was authenticated (e.g. an order the
+      // mock settled right after a reload) never reached it: reconcile the user's orders now.
+      if (userId) void queryClient.invalidateQueries({ queryKey: privateKeys.orders(userId) })
       // After a reconnection, events may have been missed: reconcile with REST.
       if (hasConnectedBefore) {
         void queryClient.invalidateQueries({ queryKey: nftKeys.all })
@@ -59,6 +70,10 @@ export function RealtimeProvider({ session, children }: { session: RealtimeSessi
     socket.on('favorites.updated', (event) => {
       if (!deduper.markFirstSeen(event.eventId)) return
       applyFavoritesUpdated(queryClient, event, userId)
+    })
+    socket.on('order.updated', (event) => {
+      if (!deduper.markFirstSeen(event.eventId)) return
+      applyOrderUpdated(queryClient, event, userId)
     })
 
     socket.connect()

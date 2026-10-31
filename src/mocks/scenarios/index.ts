@@ -5,7 +5,7 @@ import type { ApiErrorBody, ApiErrorCode } from '@/shared/contracts'
  * Network/failure scenarios, selected by `?scenario=<name>` (persisted in localStorage)
  * so dev, demo build and Playwright share the exact same, reproducible behavior.
  */
-export type ScenarioName = 'default' | 'slow' | 'server-error' | 'offline' | 'empty' | 'out-of-order' | 'favorites-error' | 'cart-error'
+export type ScenarioName = 'default' | 'slow' | 'server-error' | 'offline' | 'empty' | 'out-of-order' | 'favorites-error' | 'cart-error' | 'payment-rejected' | 'payment-pending' | 'order-timeout' | 'wallet-reject'
 
 interface Scenario {
   /** Fixed latency (ms) — deterministic. */
@@ -33,6 +33,11 @@ const SCENARIOS: Record<ScenarioName, Scenario> = {
   'favorites-error': { latencyMs: 800, failure: 'http-500', failingEndpoints: ['favorite-write'] },
   // Cart writes (add, quantity, remove, merge) fail with 500 after a visible delay; reads work.
   'cart-error': { latencyMs: 800, failure: 'http-500', failingEndpoints: ['cart-write'] },
+  // Checkout outcomes (read by the order/wallet handlers; normal latency).
+  'payment-rejected': { latencyMs: 150 },
+  'payment-pending': { latencyMs: 150 },
+  'order-timeout': { latencyMs: 150 },
+  'wallet-reject': { latencyMs: 150 },
 }
 
 /** Call counters per endpoint (in memory: reset on reload, like a fresh server connection). */

@@ -1,7 +1,7 @@
 import { toSocketIo } from '@mswjs/socket.io-binding'
 import { ws, type WebSocketHandlerConnection } from 'msw'
 import { sessionsTable } from '@/mocks/store/db'
-import type { FavoritesUpdatedEvent, NftUpdatedEvent, Nft, RealtimeAuth, ServerToClientEvents } from '@/shared/contracts'
+import type { FavoritesUpdatedEvent, NftUpdatedEvent, Nft, Order, OrderUpdatedEvent, RealtimeAuth, ServerToClientEvents } from '@/shared/contracts'
 
 /**
  * Simulated Socket.IO server.
@@ -117,6 +117,16 @@ export function buildFavoritesUpdatedEvent(userId: string, favorites: { nftIds: 
     version: favorites.version,
     occurredAt: new Date().toISOString(),
     data: { nftIds: favorites.nftIds },
+  }
+}
+
+export function buildOrderUpdatedEvent(order: Pick<Order, 'id' | 'status' | 'txHash' | 'rejectionReason' | 'version' | 'updatedAt'>): OrderUpdatedEvent {
+  return {
+    eventId: crypto.randomUUID(),
+    resource: { type: 'order', id: order.id },
+    version: order.version,
+    occurredAt: order.updatedAt,
+    data: { status: order.status, txHash: order.txHash, rejectionReason: order.rejectionReason },
   }
 }
 
