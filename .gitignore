@@ -36,3 +36,6 @@ lighthouse-reports/
 # Env overrides (never commit secrets)
 .env.local
 .env.*.local
+
+# Vercel CLI link (project/org ids; local only)
+.vercel
