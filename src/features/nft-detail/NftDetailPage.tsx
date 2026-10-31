@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useCanGoBack, useRouter } from '@tanstack/react-router'
 import { ChevronLeft } from 'lucide-react'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FavoriteButton } from '@/features/favorites/components/FavoriteButton'
@@ -18,7 +18,6 @@ import { PurchasePanel } from './components/PurchasePanel'
 import { RatingSummary } from './components/RatingSummary'
 import { ShareActions } from './components/ShareActions'
 import { resolveEdition } from './search-params'
-import { UNAVAILABLE_MESSAGES, type UnavailableAction } from './unavailable-actions'
 
 interface NftDetailPageProps {
   nftId: string
@@ -123,12 +122,6 @@ function NftDetailContent({
     if (resolvedId && resolvedId !== editionId) onEditionChange(resolvedId)
   }, [resolvedId, editionId, onEditionChange])
 
-  const [actionNotice, setActionNotice] = useState<{ message: string; id: number } | null>(null)
-  const onUnavailable = useCallback(
-    (action: UnavailableAction) =>
-      setActionNotice((previous) => ({ message: UNAVAILABLE_MESSAGES[action], id: (previous?.id ?? 0) + 1 })),
-    [],
-  )
 
   return (
     <article
@@ -178,14 +171,7 @@ function NftDetailContent({
             </p>
 
             {edition && (
-              <PurchasePanel
-                key={edition.id}
-                nftId={nft.id}
-                nftName={nft.name}
-                edition={edition}
-                actionNotice={actionNotice}
-                onUnavailable={onUnavailable}
-              />
+              <PurchasePanel key={edition.id} nftId={nft.id} nftName={nft.name} edition={edition} />
             )}
 
             <dl className="space-y-1.5 text-xs text-muted-foreground md:text-sm">

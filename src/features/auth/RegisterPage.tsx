@@ -13,7 +13,7 @@ import { AuthCard } from './components/AuthCard'
 import { FormField } from './components/FormField'
 import { SignedInPanel } from './components/SignedInPanel'
 import { apiFieldErrors, focusFirstInvalid, formErrorMessage, type FieldErrors } from './form-errors'
-import { useRegister } from './hooks'
+import { guestCartMessage, useRegister } from './hooks'
 import type { AuthSearch } from './search-params'
 import { useSession } from './session'
 
@@ -53,7 +53,7 @@ export function RegisterPage({ search }: { search: AuthSearch }) {
     if (focusRequest > 0) focusFirstInvalid(formRef.current)
   }, [focusRequest])
 
-  if (user && !registerAccount.isSuccess) {
+  if (user && registerAccount.isIdle) {
     return (
       <AuthCard mode="register" redirect={search.redirect} title="Você já entrou">
         <SignedInPanel name={user.name} email={user.email} redirect={search.redirect} />
@@ -82,8 +82,10 @@ export function RegisterPage({ search }: { search: AuthSearch }) {
     registerAccount.mutate(
       { username: normalizeUsername(values.username), email: values.email.trim(), password: values.password },
       {
-        onSuccess: (session) => {
+        onSuccess: ({ session, guestCart }) => {
           notify(`Conta criada. Bem-vindo(a), ${session.user.name}.`, 'success')
+          const cartNotice = guestCartMessage(guestCart)
+          if (cartNotice) notify(cartNotice.message, cartNotice.tone)
           void navigate({ href: search.redirect ?? '/', replace: true })
         },
         onError: (error) => {

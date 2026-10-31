@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { nftKeys, privateKeys } from '@/shared/query-keys'
-import { applyFavoritesUpdated, applyNftUpdated, EventDeduper, invalidateNftLists } from './apply-events'
+import { applyFavoritesUpdated, applyNftUpdated, EventDeduper, invalidateCarts, invalidateCartsWith, invalidateNftLists } from './apply-events'
 import { createRealtimeSocket } from './socket'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
@@ -45,6 +45,7 @@ export function RealtimeProvider({ session, children }: { session: RealtimeSessi
       if (hasConnectedBefore) {
         void queryClient.invalidateQueries({ queryKey: nftKeys.all })
         if (userId) void queryClient.invalidateQueries({ queryKey: privateKeys.user(userId) })
+        void invalidateCarts(queryClient)
       }
       hasConnectedBefore = true
     })
@@ -53,6 +54,7 @@ export function RealtimeProvider({ session, children }: { session: RealtimeSessi
       if (!deduper.markFirstSeen(event.eventId)) return
       applyNftUpdated(queryClient, event)
       void invalidateNftLists(queryClient)
+      void invalidateCartsWith(queryClient, event.resource.id)
     })
     socket.on('favorites.updated', (event) => {
       if (!deduper.markFirstSeen(event.eventId)) return

@@ -29,4 +29,11 @@ export const privateKeys = {
   user: (userId: string) => [...privateKeys.all, userId] as const,
   profile: (userId: string) => [...privateKeys.user(userId), 'profile'] as const,
   favorites: (userId: string) => [...privateKeys.user(userId), 'favorites'] as const,
+  cart: (userId: string) => [...privateKeys.user(userId), 'cart'] as const,
+}
+
+/** Visitor cart, keyed by its id (a new visitor after logout gets a new id: nothing is shared). */
+export const guestCartKeys = {
+  all: ['guest-cart'] as const,
+  cart: (guestCartId: string) => [...guestCartKeys.all, guestCartId] as const,
 }

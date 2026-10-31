@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { nftKeys, privateKeys } from '@/shared/query-keys'
-import type { FavoritesResponse, FavoritesUpdatedEvent, Nft, NftUpdatedEvent } from '@/shared/contracts'
+import { guestCartKeys, nftKeys, privateKeys } from '@/shared/query-keys'
+import type { Cart, FavoritesResponse, FavoritesUpdatedEvent, Nft, NftUpdatedEvent } from '@/shared/contracts'
 
 /** Remembers recently applied event ids to ignore duplicates (bounded memory). */
 export class EventDeduper {
@@ -69,6 +69,24 @@ export async function invalidateNftLists(queryClient: QueryClient) {
   await queryClient.invalidateQueries({ queryKey: nftKeys.collections() })
   // Favorites lists carry NFT summaries (price/stock) too.
   return queryClient.invalidateQueries({ queryKey: privateKeys.all, predicate: (query) => query.queryKey[2] === 'favorites' })
+}
+
+const isCartKey = (key: readonly unknown[]) => key[0] === guestCartKeys.all[0] || (key[0] === privateKeys.all[0] && key[2] === 'cart')
+
+/**
+ * Carts holding the NFT are refetched: the API recomputes prices, reduces quantities above the
+ * new stock and marks sold-out lines (the cart page shows and announces what changed).
+ */
+export function invalidateCartsWith(queryClient: QueryClient, nftId: string) {
+  return queryClient.invalidateQueries({
+    predicate: (query) =>
+      isCartKey(query.queryKey) && Boolean((query.state.data as Cart | undefined)?.items.some((item) => item.nftId === nftId)),
+  })
+}
+
+/** Reconnection: every cart (visitor or user) is reconciled with the API. */
+export function invalidateCarts(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({ predicate: (query) => isCartKey(query.queryKey) })
 }
 
 /**

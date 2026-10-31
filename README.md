@@ -2,7 +2,7 @@
 
 Solução do [desafio Front-end da Jungle Gaming](https://github.com/junglegaming/frontend-challenge): marketplace de NFTs em React + TypeScript com APIs, autenticação, carteiras, pagamentos e tempo real **simulados na camada de rede** (MSW + Socket.IO).
 
-> **Status:** Etapa 4 — Início (destaques + catálogo com busca, abas, filtros, ordenação e paginação na URL), Detalhe do NFT (galeria, edições na URL, quantidade com limite e estoque em tempo real, avaliações, compartilhamento, "Mais desta coleção"), **cadastro, login, logout e sessão** (recuperada após refresh, expiração tratada), **perfil** (leitura), **lista de interesse / favoritos** (otimista com rollback, por usuário) e **Socket.IO por sessão**. Comprar e carrinho aparecem como indisponíveis até as próximas etapas.
+> **Status:** Etapa 5 — Início (destaques + catálogo com busca, abas, filtros, ordenação e paginação na URL), Detalhe do NFT (galeria, edições na URL, quantidade com limite e estoque em tempo real, avaliações, compartilhamento, "Mais desta coleção"), **cadastro, login, logout e sessão** (recuperada após refresh, expiração tratada), **perfil** (leitura), **lista de interesse / favoritos** (otimista com rollback, por usuário) e **Socket.IO por sessão** e **carrinho** (visitante ou conta, mesclado no login, persistido na API simulada, estoque e preço em tempo real, contador). O checkout (`/checkout`) exige login e mostra a revisão; pagamento e pedido são a próxima etapa.
 
 ## Stack
 
@@ -70,7 +70,7 @@ Contas fictícias do backend simulado (senhas guardadas como hash com salt, nunc
 
 Novas contas podem ser criadas em `/register` (nome de usuário de 3 a 20 caracteres; senha com 8+ caracteres, letras e números). Elas ficam no banco simulado até o reset.
 
-Rotas: `/login`, `/register`, `/profile` e `/favorites` (privadas: visitante é levado ao login e volta à página pedida).
+Rotas: `/login`, `/register`, `/cart`, `/checkout`, `/profile` e `/favorites` (`/checkout`, `/profile` e `/favorites` são privadas: visitante é levado ao login e volta à página pedida). O carrinho funciona também para visitantes e é mesclado à conta no login.
 
 ## Mocks: cenários e reset
 
@@ -85,6 +85,7 @@ O estado simulado fica em `localStorage` (sobrevive a refresh). Cenários de red
 | `empty` | Listagens e destaques sem resultados |
 | `out-of-order` | Latência alternada por endpoint (2000 ms, 100 ms, …): respostas fora de ordem |
 | `favorites-error` | Latência de 800 ms; adicionar/remover favorito responde 500 (atualização otimista + rollback) |
+| `cart-error` | Latência de 800 ms; escritas do carrinho (adicionar, quantidade, remover, mesclar) respondem 500 |
 
 - Selecionar: abrir qualquer URL com `?scenario=<nome>` (fica persistido).
 - Endpoints de controle (somente mocks, prefixo `/api/__mock`):
@@ -106,6 +107,13 @@ Na tela de detalhe, o botão **Simulação (MSW)** (fim da página) abre um pain
 - Estoque menor que o limite por pedido: `/nfts/nft-001` (1/50: 3 disponíveis, máx. 5).
 - Estoque caindo em tempo real: em `/nfts/nft-distant-galaxy`, aumente a quantidade para 5 e use **Simulação (MSW) → Reduzir estoque para 1**.
 - Falha nas avaliações: `?scenario=server-error` e abra a aba "Avaliações"; volte com `?scenario=default` e "Tentar novamente".
+
+### Reproduzir os fluxos do carrinho
+
+- Visitante → conta: sem login, clique em "Comprar NFT" em dois NFTs, abra `/cart` e "Conectar e finalizar": o login pede a conta e, ao entrar, volta ao checkout com os itens preservados (somados aos que a conta já tinha).
+- Estoque em tempo real: com itens em `/cart`, abra um NFT do carrinho e use **Simulação (MSW) → Reduzir estoque para 1** ou **Esgotar edição**, ou no console `fetch('/api/__mock/nfts/nft-distant-galaxy/editions/ed-standard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ available: 1 }) })`: o carrinho reduz a quantidade (ou marca esgotado e bloqueia o checkout) e informa o motivo.
+- Falhas: `?scenario=cart-error` e altere a quantidade ou remova um item — a mudança aparece na hora (linha em "Salvando…") e é desfeita com aviso. Volte com `?scenario=default`.
+- Limitação: uma alteração ainda em "Salvando…" é perdida se a página for recarregada nesse instante (o mock roda na própria página; detalhes e por que não há aviso de saída em ARCHITECTURE.md › Carrinho).
 
 ### Reproduzir os fluxos de conta
 

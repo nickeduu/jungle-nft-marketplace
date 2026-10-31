@@ -1,5 +1,6 @@
 import axios, { isAxiosError } from 'axios'
-import type { ApiErrorBody, ApiErrorCode } from '@/shared/contracts'
+import { GUEST_CART_HEADER, type ApiErrorBody, type ApiErrorCode } from '@/shared/contracts'
+import { guestCartId } from './guest-cart'
 import { sessionToken } from './session-token'
 
 /** Single Axios instance for every REST call. MSW intercepts it at the network layer. */
@@ -53,10 +54,15 @@ export function toApiError(error: unknown): ApiError {
   return new ApiError('UNKNOWN', 'Erro inesperado.', null)
 }
 
-/** Authenticated requests carry the session token; the API resolves the user from it. */
+/**
+ * Authenticated requests carry the session token; the API resolves the user from it.
+ * Visitors with a cart send its id (the API ignores it when there is a session).
+ */
 http.interceptors.request.use((config) => {
   const token = sessionToken.get()
   if (token) config.headers.set('Authorization', `Bearer ${token}`)
+  const guest = guestCartId.get()
+  if (!token && guest) config.headers.set(GUEST_CART_HEADER, guest)
   return config
 })
 

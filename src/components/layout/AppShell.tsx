@@ -2,6 +2,7 @@ import { Link, useLocation, useRouterState } from '@tanstack/react-router'
 import { Heart, House, LogIn, Search, ShoppingCart, User } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useSession } from '@/features/auth/session'
+import { useCartCount } from '@/features/cart/hooks'
 import { useRealtimeStatus } from '@/services/realtime/RealtimeProvider'
 import { cn } from '@/shared/lib/utils'
 import { SiteFooter } from './SiteFooter'
@@ -93,10 +94,7 @@ function DesktopHeader() {
           <Link to="/" hash="catalogo" aria-label="Buscar NFTs" className="text-foreground hover:text-primary">
             <Search className="size-4" aria-hidden="true" />
           </Link>
-          <span aria-disabled="true" title={`Carrinho — ${UNAVAILABLE}`} className="text-muted-foreground">
-            <ShoppingCart className="size-4" aria-hidden="true" />
-            <span className="sr-only">Carrinho (indisponível nesta versão)</span>
-          </span>
+          <CartLink iconClassName="size-4" className="relative text-foreground hover:text-primary data-[status=active]:text-primary" />
           <AccountControls />
         </div>
       </div>
@@ -143,9 +141,31 @@ function AccountControls() {
   )
 }
 
+/**
+ * Cart icon with the number of units (Figma: badge on the cart). The count comes from the cart
+ * query of the current owner (user or visitor), so it follows adds/changes/removals and refresh.
+ */
+function CartLink({ className, iconClassName }: { className: string; iconClassName: string }) {
+  const count = useCartCount()
+  return (
+    <Link to="/cart" className={className} data-testid="cart-link">
+      <ShoppingCart className={iconClassName} aria-hidden="true" />
+      <span className="sr-only">Carrinho{count > 0 ? `, ${count} ${count === 1 ? 'item' : 'itens'}` : ''}</span>
+      {count > 0 && (
+        <span
+          aria-hidden="true"
+          data-testid="cart-count-badge"
+          className="absolute -top-1.5 -right-2 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] leading-none font-semibold text-primary-foreground"
+        >
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
+    </Link>
+  )
+}
+
 /** Figma mobile: icons only (labels stay available to assistive technology). */
 function MobileNav() {
-  const disabledItem = 'grid size-11 place-items-center text-muted-foreground/70'
   const activeItem = 'grid size-11 place-items-center text-foreground data-[status=active]:text-primary'
   return (
     <nav
@@ -169,9 +189,8 @@ function MobileNav() {
             <span className="sr-only">Lista de interesse</span>
           </Link>
         </li>
-        <li aria-disabled="true" title={UNAVAILABLE} className={disabledItem}>
-          <ShoppingCart className="size-5" aria-hidden="true" />
-          <span className="sr-only">Carrinho (indisponível nesta versão)</span>
+        <li>
+          <CartLink iconClassName="size-5" className={cn(activeItem, 'relative')} />
         </li>
         <li>
           {/* Private route: visitors are redirected to the login and come back here. */}

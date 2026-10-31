@@ -9,7 +9,7 @@ import type { Nft, User } from '@/shared/contracts'
  *
  * Persisted in localStorage to survive refresh; `resetDb()` restores the seed exactly.
  */
-const SCHEMA_VERSION = 6
+const SCHEMA_VERSION = 7
 
 /** Session lifetime. Tests expire sessions on demand through the control endpoints. */
 export const SESSION_TTL_MS = 2 * 60 * 60 * 1000
@@ -27,6 +27,24 @@ interface FavoritesRecord {
   version: number
 }
 
+/** A cart line as stored: the API derives prices, totals and status from the catalog on every read. */
+export interface StoredCartItem {
+  nftId: string
+  editionId: string
+  quantity: number
+  /** Edition price when the user last added/changed the line (to report price changes). */
+  priceSeenEth: string
+  /** Set when the API reduced the quantity because stock dropped; cleared on the next user change. */
+  quantityAdjustedFrom: number | null
+  addedAt: string
+}
+
+export interface CartRecord {
+  items: StoredCartItem[]
+  version: number
+  updatedAt: string
+}
+
 interface DbState {
   schemaVersion: typeof SCHEMA_VERSION
   nfts: Record<string, Nft>
@@ -35,7 +53,12 @@ interface DbState {
   sessions: Record<string, SessionRecord>
   /** By user id: each user's list is a separate record. */
   favorites: Record<string, FavoritesRecord>
+  /** By owner key: `user:<userId>` or `guest:<uuid>` — every cart is a separate record. */
+  carts: Record<string, CartRecord>
 }
+
+/** v6: accounts and favorites, no carts. */
+type DbStateV6 = Omit<DbState, 'schemaVersion' | 'carts'> & { schemaVersion: 6 }
 
 /** v5: NFT catalog only (no accounts). */
 interface DbStateV5 {
@@ -60,6 +83,7 @@ function seed(): DbState {
     favorites: Object.fromEntries(
       Object.entries(favoriteFixtures).map(([userId, nftIds]) => [userId, { nftIds: [...nftIds], version: 1 }]),
     ),
+    carts: {},
   }
 }
 
@@ -84,18 +108,30 @@ function migrateFromV4(previous: DbStateV4): DbStateV5 {
 }
 
 /** v5 → v6: keeps the catalog as persisted and adds the seed accounts and favorites. */
-function migrateFromV5(previous: DbStateV5): DbState {
-  return { ...seed(), nfts: previous.nfts }
+function migrateFromV5(previous: DbStateV5): DbStateV6 {
+  const { users, sessions, favorites } = seed()
+  return { schemaVersion: 6, nfts: previous.nfts, users, sessions, favorites }
+}
+
+/** v6 → v7: everything persisted is kept; carts start empty. */
+function migrateFromV6(previous: DbStateV6): DbState {
+  return { ...previous, schemaVersion: SCHEMA_VERSION, carts: {} }
 }
 
 function load(): DbState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as DbState | DbStateV5 | DbStateV4
+      const parsed = JSON.parse(raw) as DbState | DbStateV6 | DbStateV5 | DbStateV4
       if (parsed.schemaVersion === SCHEMA_VERSION) return parsed
       const migrated =
-        parsed.schemaVersion === 5 ? migrateFromV5(parsed) : parsed.schemaVersion === 4 ? migrateFromV5(migrateFromV4(parsed)) : null
+        parsed.schemaVersion === 6
+          ? migrateFromV6(parsed)
+          : parsed.schemaVersion === 5
+            ? migrateFromV6(migrateFromV5(parsed))
+            : parsed.schemaVersion === 4
+              ? migrateFromV6(migrateFromV5(migrateFromV4(parsed)))
+              : null
       if (migrated) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
         return migrated
@@ -241,5 +277,25 @@ export const favoritesTable = {
     state.favorites[userId] = next
     persist()
     return { record: structuredClone(next), changed: true }
+  },
+}
+
+export const cartsTable = {
+  get(ownerKey: string): CartRecord {
+    return structuredClone(state.carts[ownerKey] ?? { items: [], version: 0, updatedAt: new Date(0).toISOString() })
+  },
+
+  /** Replaces the owner's lines (bumps the version). */
+  save(ownerKey: string, items: StoredCartItem[]): CartRecord {
+    const previous = state.carts[ownerKey]
+    const record: CartRecord = { items: structuredClone(items), version: (previous?.version ?? 0) + 1, updatedAt: new Date().toISOString() }
+    state.carts[ownerKey] = record
+    persist()
+    return structuredClone(record)
+  },
+
+  delete(ownerKey: string) {
+    delete state.carts[ownerKey]
+    persist()
   },
 }

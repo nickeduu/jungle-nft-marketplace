@@ -7,7 +7,7 @@ import { AuthCard } from './components/AuthCard'
 import { FormField } from './components/FormField'
 import { SignedInPanel } from './components/SignedInPanel'
 import { apiFieldErrors, focusFirstInvalid, formErrorMessage, type FieldErrors } from './form-errors'
-import { useLogin } from './hooks'
+import { guestCartMessage, useLogin } from './hooks'
 import type { AuthSearch } from './search-params'
 import { useSession } from './session'
 
@@ -40,8 +40,8 @@ export function LoginPage({ search }: { search: AuthSearch }) {
     if (focusRequest > 0) focusFirstInvalid(formRef.current)
   }, [focusRequest])
 
-  // Signed in (also right after this form succeeds, until the navigation happens).
-  if (user && !login.isSuccess) {
+  // Already signed in (not this form's own sign-in, which navigates away when it settles).
+  if (user && login.isIdle) {
     return (
       <AuthCard mode="login" redirect={search.redirect} title="Você já entrou">
         <SignedInPanel name={user.name} email={user.email} redirect={search.redirect} />
@@ -71,8 +71,10 @@ export function LoginPage({ search }: { search: AuthSearch }) {
     login.mutate(
       { email: values.email.trim(), password: values.password },
       {
-        onSuccess: (session) => {
+        onSuccess: ({ session, guestCart }) => {
           notify(`Bem-vindo(a), ${session.user.name}.`, 'success')
+          const cartNotice = guestCartMessage(guestCart)
+          if (cartNotice) notify(cartNotice.message, cartNotice.tone)
           void navigate({ href: search.redirect ?? '/', replace: true })
         },
         onError: (error) => {
